@@ -1,147 +1,398 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Runner View – RunGuard</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    #map { height: 65vh; min-height: 400px; }
-    .emergency { animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.15);} 100% {transform:scale(1);} }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Race Tracker - Runner View</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        #map { height: calc(100vh - 160px); }
+        .user-icon { background-color: #3B82F6; }
+        .emergency-icon { background-color: #EF4444; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .staff-icon-walk { background-color: #F97316; }
+        .staff-icon-bike { background-color: #F59E0B; }
+        .staff-icon-firstaid { background-color: #DC2626; color: white; }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-2">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-2xl font-bold text-blue-700">Race Tracker</h1>
+            <div class="flex items-center space-x-2">
+                <span id="status" class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm">Connected</span>
+                <button onclick="window.location.href='/staff'" class="px-3 py-1 bg-gray-200 rounded-lg text-sm">
+                    Staff View
+                </button>
+            </div>
+        </div>
 
-  <header class="bg-blue-700 text-white p-4 text-center font-bold text-lg">
-    Participant View – Live Race Map
-  </header>
+        <!-- Route Selector -->
+        <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Select Route</label>
+            <div class="flex space-x-2 overflow-x-auto pb-2">
+                <button onclick="showRoute('route_1')" class="route-btn flex-shrink-0 px-4 py-2 bg-blue-500 text-white rounded-lg">
+                    Coastal Route
+                </button>
+                <button onclick="showRoute('route_2')" class="route-btn flex-shrink-0 px-4 py-2 bg-green-500 text-white rounded-lg">
+                    Park Trail
+                </button>
+                <button onclick="showRoute('route_3')" class="route-btn flex-shrink-0 px-4 py-2 bg-purple-500 text-white rounded-lg">
+                    City Loop
+                </button>
+            </div>
+        </div>
 
-  <main class="flex-1 p-3 flex flex-col gap-3">
-    <div id="map" class="w-full rounded shadow"></div>
+        <!-- Emergency Button -->
+        <div class="mb-3">
+            <button id="emergencyBtn" onclick="requestEmergency()" 
+                    class="w-full py-3 px-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg transition-all duration-200">
+                🆘 EMERGENCY - Request Staff Support
+            </button>
+            <button id="cancelEmergencyBtn" onclick="cancelEmergency()" 
+                    class="hidden w-full py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg mt-2">
+                ✅ Cancel Emergency
+            </button>
+            <div id="emergencyInfo" class="hidden mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p class="text-red-700 font-medium">Emergency Reported!</p>
+                <p class="text-red-600 text-sm">Staff have been notified. Help is on the way.</p>
+            </div>
+        </div>
 
-    <div class="flex flex-wrap gap-2 justify-center">
-      <button onclick="selectRoute('A')" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Route A</button>
-      <button onclick="selectRoute('B')" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">Route B</button>
-      <button onclick="selectRoute('C')" class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">Route C</button>
+        <!-- Map Container -->
+        <div id="map" class="rounded-xl border-2 border-gray-300 shadow-lg"></div>
+
+        <!-- Info Panel -->
+        <div class="mt-3 p-3 bg-white rounded-lg border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center">
+                        <div class="w-4 h-4 rounded-full bg-blue-500 mr-2"></div>
+                        <span class="text-sm">You</span>
+                    </div>
+                    <div class="flex items-center">
+                        <div class="w-4 h-4 rounded-full bg-orange-500 mr-2"></div>
+                        <span class="text-sm">Staff</span>
+                    </div>
+                    <div class="flex items-center">
+                        <div class="w-4 h-4 rounded-full bg-red-500 mr-2 animate-pulse"></div>
+                        <span class="text-sm">Emergency</span>
+                    </div>
+                </div>
+                <div id="locationInfo" class="text-sm text-gray-600">
+                    Getting location...
+                </div>
+            </div>
+        </div>
     </div>
 
-    <button id="emergencyBtn" class="mt-2 w-full py-5 bg-red-600 hover:bg-red-700 text-white text-xl font-bold rounded-lg shadow-lg transition">
-      🚨 EMERGENCY – NEED HELP
-    </button>
+    <script>
+        // Initialize variables
+        let socket = io();
+        let map = null;
+        let userMarker = null;
+        let currentRoute = null;
+        let routeLayer = null;
+        let staffMarkers = {};
+        let emergencyId = null;
+        let userPosition = null;
+        let watchId = null;
 
-    <div id="status" class="text-center text-sm text-gray-600">Waiting for location…</div>
-  </main>
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([1.3521, 103.8198], 15);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            loadRoutes();
+            startLocationTracking();
+        }
 
-  <script>
-    const socket = io();
+        // Load running routes
+        async function loadRoutes() {
+            try {
+                const response = await fetch('/api/routes');
+                window.routes = await response.json();
+                showRoute('route_1');
+            } catch (error) {
+                console.error('Error loading routes:', error);
+            }
+        }
 
-    let map, myMarker, markers = {}, routeLayer;
-    let emergencyActive = false;
-    let currentRoute = 'A';
+        // Display selected route
+        function showRoute(routeId) {
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+            }
+            
+            const route = window.routes[routeId];
+            if (route) {
+                routeLayer = L.polyline(route.path, {
+                    color: route.color,
+                    weight: 5,
+                    opacity: 0.7
+                }).addTo(map);
+                
+                map.fitBounds(routeLayer.getBounds());
+                currentRoute = routeId;
+                
+                // Update active button
+                document.querySelectorAll('.route-btn').forEach(btn => {
+                    btn.classList.remove('ring-2', 'ring-offset-2');
+                });
+                event.target.classList.add('ring-2', 'ring-offset-2', 'ring-blue-500');
+            }
+        }
 
-    const routes = {
-      A: [[22.300, 114.170],[22.295, 114.185],[22.285, 114.190],[22.275, 114.175]],
-      B: [[22.300, 114.170],[22.310, 114.165],[22.320, 114.180],[22.315, 114.195]],
-      C: [[22.300, 114.170],[22.290, 114.155],[22.280, 114.160],[22.275, 114.175]]
-    };
+        // Start tracking user location
+        function startLocationTracking() {
+            if (navigator.geolocation) {
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        userPosition = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        
+                        updateUserLocation();
+                        updateLocationInfo();
+                        
+                        if (!userMarker) {
+                            userMarker = L.circleMarker([userPosition.lat, userPosition.lng], {
+                                radius: 10,
+                                fillColor: '#3B82F6',
+                                color: '#1D4ED8',
+                                weight: 2,
+                                opacity: 1,
+                                fillOpacity: 0.8
+                            }).addTo(map);
+                        } else {
+                            userMarker.setLatLng([userPosition.lat, userPosition.lng]);
+                        }
+                        
+                        if (!map.getBounds().contains(userMarker.getLatLng())) {
+                            map.panTo([userPosition.lat, userPosition.lng]);
+                        }
+                    },
+                    (error) => {
+                        console.error('Geolocation error:', error);
+                        document.getElementById('locationInfo').innerHTML = 
+                            '<span class="text-red-600">Location access required!</span>';
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 10000,
+                        timeout: 5000
+                    }
+                );
+            }
+        }
 
-    function initMap() {
-      map = L.map('map').setView([22.300, 114.170], 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(map);
-      routeLayer = L.polyline(routes.A, {color:'green', weight:5}).addTo(map);
-    }
+        // Update user location via WebSocket
+        function updateUserLocation() {
+            if (userPosition) {
+                socket.emit('user_location', {
+                    lat: userPosition.lat,
+                    lng: userPosition.lng,
+                    emergency: emergencyId !== null
+                });
+            }
+        }
 
-    function selectRoute(name) {
-      currentRoute = name;
-      if (routeLayer) map.removeLayer(routeLayer);
-      const color = name==='A'?'green':name==='B'?'purple':'orange';
-      routeLayer = L.polyline(routes[name], {color, weight:5}).addTo(map);
-      map.fitBounds(routeLayer.getBounds());
-    }
+        // Update location info display
+        function updateLocationInfo() {
+            if (userPosition) {
+                document.getElementById('locationInfo').innerHTML = 
+                    `${userPosition.lat.toFixed(6)}, ${userPosition.lng.toFixed(6)}`;
+            }
+        }
 
-    function startLocation() {
-      if (!navigator.geolocation) {
-        document.getElementById('status').textContent = "Geolocation not supported";
-        return;
-      }
-      navigator.geolocation.watchPosition(
-        pos => {
-          const {latitude: lat, longitude: lng} = pos.coords;
-          socket.emit('update_location', {role:'participant', lat, lng, name:`Runner-${Math.random().toString(36).slice(2,8)}`});
-          if (!myMarker) {
-            myMarker = L.circleMarker([lat,lng], {radius:10, color:'blue', fillColor:'#3388ff', fillOpacity:0.8, weight:3})
-              .addTo(map);
-            map.setView([lat,lng], 16);
-          } else {
-            myMarker.setLatLng([lat,lng]);
-          }
-          document.getElementById('status').textContent = `Location shared • ${new Date().toLocaleTimeString()}`;
-        },
-        err => document.getElementById('status').textContent = `Location error: ${err.message}`,
-        {enableHighAccuracy:true, timeout:5000, maximumAge:0}
-      );
-    }
+        // Request emergency support
+        function requestEmergency() {
+            if (!userPosition) {
+                alert('Please enable location services first!');
+                return;
+            }
+            
+            socket.emit('emergency_request', { location: userPosition }, (response) => {
+                emergencyId = response.emergency_id;
+                document.getElementById('emergencyBtn').classList.add('hidden');
+                document.getElementById('cancelEmergencyBtn').classList.remove('hidden');
+                document.getElementById('emergencyInfo').classList.remove('hidden');
+                
+                if (userMarker) {
+                    userMarker.setStyle({
+                        fillColor: '#EF4444',
+                        color: '#DC2626'
+                    });
+                }
+            });
+        }
 
-    socket.on('connect', () => {
-      document.getElementById('status').textContent = "Connected – starting GPS…";
-      startLocation();
-    });
+        // Cancel emergency
+        function cancelEmergency() {
+            if (emergencyId) {
+                socket.emit('resolve_emergency', { emergency_id: emergencyId }, (response) => {
+                    if (response.status === 'success') {
+                        emergencyId = null;
+                        document.getElementById('emergencyBtn').classList.remove('hidden');
+                        document.getElementById('cancelEmergencyBtn').classList.add('hidden');
+                        document.getElementById('emergencyInfo').classList.add('hidden');
+                        
+                        if (userMarker) {
+                            userMarker.setStyle({
+                                fillColor: '#3B82F6',
+                                color: '#1D4ED8'
+                            });
+                        }
+                    }
+                });
+            }
+        }
 
-    socket.on('update_all', data => {
-      Object.keys(markers).forEach(k => { map.removeLayer(markers[k]); delete markers[k]; });
+        // Socket event handlers
+        socket.on('connect', () => {
+            document.getElementById('status').textContent = 'Connected';
+            document.getElementById('status').className = 'px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm';
+            
+            socket.emit('get_all_data');
+        });
 
-      Object.entries(data.staff || {}).forEach(([sid, s]) => {
-        if (!s.share_location || !s.lat) return;
-        const color = s.first_aid ? '#dc2626' : '#f59e0b';
-        const iconTxt = s.transport==='bike' ? '🚴' : '🚶';
-        const m = L.marker([s.lat,s.lng], {
-          icon: L.divIcon({html:`<div style="color:${color};font-size:2.2rem">${iconTxt}</div>`, iconSize:[44,44], iconAnchor:[22,44]})
-        }).addTo(map).bindTooltip(s.name || 'Staff');
-        markers[sid] = m;
-      });
+        socket.on('disconnect', () => {
+            document.getElementById('status').textContent = 'Disconnected';
+            document.getElementById('status').className = 'px-3 py-1 rounded-full bg-red-100 text-red-800 text-sm';
+        });
 
-      Object.entries(data.participants || {}).forEach(([sid, p]) => {
-        if (!p.lat) return;
-        const isEmergency = !!p.emergency;
-        const m = L.circleMarker([p.lat,p.lng], {
-          radius:8,
-          color: isEmergency ? 'red' : 'blue',
-          fillColor: isEmergency ? '#ef4444' : '#3b82f6',
-          fillOpacity:0.7,
-          weight: isEmergency ? 4 : 2,
-          className: isEmergency ? 'emergency' : ''
-        }).addTo(map).bindTooltip(p.name || 'Runner');
-        markers[sid] = m;
-      });
-    });
+        socket.on('all_data', (data) => {
+            // Update staff markers
+            Object.keys(staffMarkers).forEach(sid => {
+                if (!data.staff[sid]) {
+                    map.removeLayer(staffMarkers[sid]);
+                    delete staffMarkers[sid];
+                }
+            });
+            
+            Object.entries(data.staff).forEach(([sid, staffData]) => {
+                if (staffData.share_location) {
+                    updateStaffMarker(sid, staffData);
+                }
+            });
+            
+            // Check for existing emergencies
+            Object.entries(data.emergencies).forEach(([eid, emergency]) => {
+                if (emergency.user_id === socket.id) {
+                    emergencyId = eid;
+                    document.getElementById('emergencyBtn').classList.add('hidden');
+                    document.getElementById('cancelEmergencyBtn').classList.remove('hidden');
+                    document.getElementById('emergencyInfo').classList.remove('hidden');
+                }
+            });
+        });
 
-    socket.on('emergency_alert', data => {
-      alert(`Emergency from ${data.name || 'a runner'}!`);
-    });
+        socket.on('staff_update', (staffData) => {
+            if (staffData.share_location) {
+                updateStaffMarker(staffData.sid || socket.id, staffData);
+            } else if (staffMarkers[staffData.sid || socket.id]) {
+                map.removeLayer(staffMarkers[staffData.sid || socket.id]);
+                delete staffMarkers[staffData.sid || socket.id];
+            }
+        });
 
-    document.getElementById('emergencyBtn').onclick = function() {
-      if (emergencyActive) {
-        socket.emit('cancel_emergency');
-        if (myMarker) myMarker.setStyle({color:'blue', fillColor:'#3388ff'});
-        this.textContent = "🚨 EMERGENCY – NEED HELP";
-        emergencyActive = false;
-      } else if (myMarker) {
-        const pos = myMarker.getLatLng();
-        socket.emit('emergency', {lat: pos.lat, lng: pos.lng});
-        myMarker.setStyle({color:'red', fillColor:'#ef4444'});
-        this.textContent = "🚨 CANCEL HELP REQUEST";
-        emergencyActive = true;
-      }
-    };
+        socket.on('staff_left', (data) => {
+            if (staffMarkers[data.sid]) {
+                map.removeLayer(staffMarkers[data.sid]);
+                delete staffMarkers[data.sid];
+            }
+        });
 
-    initMap();
-    selectRoute('A');
-  </script>
+        socket.on('emergency_alert', (data) => {
+            if (data.user_id !== socket.id) {
+                showNotification(`Emergency reported by ${data.user_id.slice(0,4)}!`);
+            }
+        });
+
+        socket.on('emergency_resolved', (data) => {
+            if (data.user_id === socket.id) {
+                emergencyId = null;
+                document.getElementById('emergencyBtn').classList.remove('hidden');
+                document.getElementById('cancelEmergencyBtn').classList.add('hidden');
+                document.getElementById('emergencyInfo').classList.add('hidden');
+            }
+        });
+
+        // Update staff marker
+        function updateStaffMarker(sid, data) {
+            let iconClass = 'staff-icon-walk';
+            let iconText = '👨‍⚕️';
+            
+            if (data.transport === 'bike') {
+                iconClass = 'staff-icon-bike';
+                iconText = '🚴';
+            }
+            
+            if (data.first_aid) {
+                iconClass = 'staff-icon-firstaid';
+                iconText = '🩹';
+            }
+            
+            const marker = L.marker([data.location[0], data.location[1]], {
+                icon: L.divIcon({
+                    html: `<div class="w-10 h-10 rounded-full flex items-center justify-center text-lg ${iconClass} border-2 border-white shadow-lg">${iconText}</div>`,
+                    className: 'custom-div-icon',
+                    iconSize: [40, 40]
+                })
+            });
+            
+            const tooltip = `${data.name} (${data.transport})${data.first_aid ? ' - First Aid' : ''}`;
+            marker.bindTooltip(tooltip);
+            
+            if (staffMarkers[sid]) {
+                staffMarkers[sid].setLatLng([data.location[0], data.location[1]]);
+            } else {
+                marker.addTo(map);
+                staffMarkers[sid] = marker;
+            }
+        }
+
+        // Show notification
+        function showNotification(message) {
+            if (Notification.permission === 'granted') {
+                new Notification('Race Tracker Alert', { body: message });
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        new Notification('Race Tracker Alert', { body: message });
+                    }
+                });
+            }
+            
+            // Fallback to browser alert
+            alert(message);
+        }
+
+        // Request notification permission on load
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        });
+
+        // Handle page visibility change
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && userPosition) {
+                updateUserLocation();
+            }
+        });
+
+        // Update location every 10 seconds even when tab is background
+        setInterval(updateUserLocation, 10000);
+    </script>
 </body>
 </html>
