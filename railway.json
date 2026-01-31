@@ -4,7 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python app.py",
-    "restartPolicyType": "ON_FAILURE"
+    "startCommand": "gunicorn --worker-class eventlet -w 1 app:app --bind 0.0.0.0:$PORT"
   }
 }
