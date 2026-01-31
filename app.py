@@ -10,7 +10,7 @@ import time
 eventlet.monkey_patch()
 
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'race-tracker-2024')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'race-tracker-2026')
 
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
