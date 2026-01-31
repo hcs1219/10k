@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#000}
+#map{height:100vh;width:100vw}
+.btn{position:fixed;z-index:1000;padding:12px 20px;border:none;border-radius:20px;font-weight:600;font-size:15px;box-shadow:0 4px 15px rgba(0,0,0,0.3);margin:5px}
+#transport-panel{top:20px;left:20px;background:rgba(255,255,255,0.95);border-radius:15px;padding:20px;width:260px;max-width:90vw;box-shadow:0 6px 25px rgba(0,0,0,0.3)}
+#transport{line-height:1.8em;font-size:16px}
+#firstaid-toggle{margin-top:15px;padding:12px;background:#ff9800;color:white;border:none;border-radius:15px;font-weight:600;cursor:pointer;width:100%}
+#gps-toggle{top:20px;right:20px;background:#4CAF50;color:white;width:140px}
+#emergency-list{bottom:20px;left:20px;right:20px;background:rgba(255,255,255,0.98);border-radius:15px;padding:20px;max-height:300px;overflow:auto;display:none;box-shadow:0 6px 25px rgba(0,0,0,0.3)}
+.emergency-item{padding:12px;margin:8px 0;background:#ffeaa7;border-radius:10px;font-size:14px;border-left:4px solid #ff4444}
+.route-btn{bottom:20px;right:20px;position:fixed;display:block;width:100px}
+</style>
+</head><body>
+<div id="map"></div>
+
+<div id="transport-panel">
+    <div style="font-weight:bold;margin-bottom:15px;font-size:18px">交通工具</div>
+    <div id="transport">
+        <label style="display:block;margin-bottom:12px">
+            <input type="radio" name="transport" value="bike" checked> 🚴自行車
+        </label>
+        <label style="display:block">
+            <input type="radio" name="transport" value="walk"> 🚶步行
+        </label>
+    </div>
+    <button id="firstaid-toggle" onclick="toggleFirstAid()">🩹攜帶急救包</button>
+</div>
+
+<button id="gps-toggle" onclick="toggleGPS()">📍分享位置</button>
+
+<div id="emergency-list">
+    <div style="font-weight:bold;color:#ff4444;margin-bottom:15px;font-size:18px">
+        🚨 緊急求救 <span id="emergency-count">(0)</span>
+    </div>
+    <div id="emergency-items"></div>
+</div>
+
+<button class="route-btn" onclick="showRoute('red')">🔴紅線</button>
+<button class="route-btn" onclick="showRoute('green')">🟢綠線</button>
+<button class="route-btn" onclick="showRoute('blue')">🔵藍線</button>
+
+<script>
+const map=L.map('map').setView([22.4,114.12],13)
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)
+
+const socket=io({transports: ['websocket']})
+let routeLayers={}
+let gpsWatchId
+let sharing=false
+const routes=JSON.parse('{{ routes | tojson }}')
+const staffId='s'+Math.random().toString(36).slice(2,7)
+let staffMode='bike'
+let hasFirstAid=false
+let emergencies={}
+
+socket.emit('join_staff_room')
+
+document.querySelectorAll('input[name="transport"]').forEach(radio=>{
+    radio.addEventListener('change',e=>staffMode=e.target.value)
+})
+
+Object.entries(routes).forEach(([color,points])=>{
+    routeLayers[color]=L.polyline(points,{
+        color:color==='red'?'#f44':color==='green'?'#4f4':'#44f',
+        weight:6
+    }).addTo(map)
+})
+
+function toggleFirstAid(){
+    hasFirstAid=!hasFirstAid
+    const btn=document.getElementById('firstaid-toggle')
+    btn.innerHTML=hasFirstAid?'✅急救包已攜帶':'🩹攜帶急救包'
+    btn.style.background=hasFirstAid?'#4CAF50':'#ff9800'
+}
+
+function showRoute(color){
+    Object.values(routeLayers).forEach(l=>l.setStyle({opacity:0.4}))
+    routeLayers[color].setStyle({opacity:1})
+    map.fitBounds(routeLayers[color].getBounds())
+}
+
+function toggleGPS(){
+    sharing=!sharing
+    const btn=document.getElementById('gps-toggle')
+    if(sharing){
+        btn.innerHTML='⏹️停止分享'
+        btn.style.background='#f44336'
+        gpsWatchId=navigator.geolocation.watchPosition(pos=>{
+            socket.emit('gps_share',{
+                staffId,
+                lat:pos.coords.latitude,
+                lng:pos.coords.longitude,
+                mode:staffMode,
+                firstaid:hasFirstAid
+            })
+        },null,{enableHighAccuracy:true,timeout:10000,maximumAge:30000})
+    }else{
+        btn.innerHTML='📍分享位置'
+        btn.style.background='#4CAF50'
+        if(gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId)
+    }
+}
+
+socket.on('emergency_alert',data=>{
+    emergencies[data.userId]=data
+    updateEmergencyList()
+    map.setView([data.lat,data.lng],16)
+    navigator.vibrate?.([300,100,300])
+    document.getElementById('emergency-list').style.display='block'
+})
+
+socket.on('emergency_cleared',data=>{
+    delete emergencies[data.userId]
+    updateEmergencyList()
+})
+
+function updateEmergencyList(){
+    document.getElementById('emergency-count').textContent=`(${Object.keys(emergencies).length})`
+    document.getElementById('emergency-items').innerHTML=Object.values(emergencies).map(e=>`
+        <div class="emergency-item">
+            👤${e.userId}<br>📍${e.lat.toFixed(4)},${e.lng.toFixed(4)}
+            <button onclick="clearEmergency('${e.userId}')" style="float:right;background:#4f4;color:white;border:none;border-radius:15px;padding:5px 10px;font-size:12px">已處理</button>
+        </div>`).join('')
+    if(Object.keys(emergencies).length===0) document.getElementById('emergency-list').style.display='none'
+}
+
+function clearEmergency(userId){
+    socket.emit('cancel_emergency',{userId})
+}
+
+showRoute('red')
+toggleGPS()
+</script>
+</body></html>
