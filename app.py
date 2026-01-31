@@ -1,58 +1,93 @@
 from flask import Flask, render_template
-from flask_socketio import SocketIO, emit, join_room
-import eventlet
+from flask_socketio import SocketIO, emit, request
 
-eventlet.monkey_patch()
+app = Flask(__name__,
+            template_folder='.')           # ← important: look for templates in same folder as app.py
 
-# 模板和靜態檔案都在當前資料夾
-app = Flask(__name__, template_folder='.', static_folder='.')
-app.config['SECRET_KEY'] = 'race2026'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = 'dev-key-change-me-in-production'
 
-# 香港三條跑步路線（有交會點）
-ROUTES = {
-    'red': [[22.3964,114.1095],[22.4000,114.1150],[22.4050,114.1200]],
-    'green': [[22.3980,114.1120],[22.4020,114.1180],[22.4070,114.1250]], 
-    'blue': [[22.3950,114.1100],[22.4030,114.1170],[22.4060,114.1220]]
-}
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-staff_locations = {}
-active_emergencies = {}
+# In-memory state (sid → data)
+participants = {}
+staff_members = {}
+
 
 @app.route('/')
-def user_page():
-    return render_template('user.html', routes=ROUTES)
+def participant():
+    return render_template('index.html')
+
 
 @app.route('/staff')
-def staff_page():
-    return render_template('staff.html', routes=ROUTES)
+def staff():
+    return render_template('staff.html')
 
-@socketio.on('join_staff_room')
-def join_staff(data):
-    join_room('staff')
 
-@socketio.on('gps_share')
-def gps_update(data):
-    staff_locations[data['staffId']] = {
-        'lat': data['lat'], 'lng': data['lng'], 
-        'mode': data['mode'], 'firstaid': data['firstaid']
-    }
-    emit('staff_update', data, broadcast=True)
+# ────────────────────────────────────────────────
+# SocketIO events
+# ────────────────────────────────────────────────
 
-@socketio.on('emergency_call')
-def emergency_alert(data):
-    user_id = data['userId']
-    active_emergencies[user_id] = {
-        'userId': user_id, 'lat': data['lat'], 'lng': data['lng'], 'time': data['time']
-    }
-    emit('emergency_alert', active_emergencies[user_id], room='staff')
+@socketio.on('connect')
+def on_connect():
+    print(f"Client connected: {request.sid}")
+
+
+@socketio.on('disconnect')
+def on_disconnect():
+    participants.pop(request.sid, None)
+    staff_members.pop(request.sid, None)
+    broadcast_state()
+
+
+@socketio.on('update_location')
+def on_location(data):
+    sid = request.sid
+    role = data.get('role')
+
+    if role == 'participant':
+        participants[sid] = {
+            'lat': data.get('lat'),
+            'lng': data.get('lng'),
+            'name': data.get('name', f"Runner-{sid[:6]}"),
+            'emergency': participants.get(sid, {}).get('emergency', False)
+        }
+    elif role == 'staff':
+        share = data.get('share_location', False)
+        staff_members[sid] = {
+            'lat': data.get('lat') if share else None,
+            'lng': data.get('lng') if share else None,
+            'name': data.get('name', 'Staff'),
+            'transport': data.get('transport', 'walk'),
+            'first_aid': data.get('first_aid', False),
+            'share_location': share
+        }
+
+    broadcast_state()
+
+
+@socketio.on('emergency')
+def on_emergency(_):
+    sid = request.sid
+    if sid in participants:
+        participants[sid]['emergency'] = True
+        emit('emergency_alert', {'name': participants[sid]['name']}, broadcast=True)
+        broadcast_state()
+
 
 @socketio.on('cancel_emergency')
-def cancel_emergency(data):
-    user_id = data['userId']
-    if user_id in active_emergencies:
-        del active_emergencies[user_id]
-    emit('emergency_cleared', {'userId': user_id}, room='staff')
+def on_cancel():
+    sid = request.sid
+    if sid in participants:
+        participants[sid]['emergency'] = False
+        broadcast_state()
+
+
+def broadcast_state():
+    emit('update_all', {
+        'participants': participants,
+        'staff': staff_members
+    }, broadcast=True)
+
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=8000, debug=True, allow_unsafe_werkzeug=True)
