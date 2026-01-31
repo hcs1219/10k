@@ -1,542 +1,900 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Race Tracker - Crew</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <title>10K 跑步賽事 - 工作人員頁面</title>
     <style>
-        #map { height: 60vh; }
-        .runner-icon { background: #3B82F6; }
-        .crew-walk { background: #F97316; }
-        .crew-bike { background: #F59E0B; }
-        .crew-aid { background: #DC2626; color: white; }
-        .emergency-icon { background: #EF4444; color: white; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #2d3436 0%, #000000 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header h1 {
+            color: #4dabf7;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header .subtitle {
+            color: #adb5bd;
+            font-size: 16px;
+        }
+        
+        /* Dashboard Layout */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 1024px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Map Section */
+        .map-section {
+            grid-column: 1 / -1;
+        }
+        
+        .map-wrapper {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+            display: block;
+        }
+        
+        /* Emergencies List */
+        .emergencies-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #4dabf7;
+        }
+        
+        .section-title h2 {
+            color: #4dabf7;
+            font-size: 24px;
+        }
+        
+        .emergency-count {
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            animation: pulse 2s infinite;
+        }
+        
+        /* Emergency Cards */
+        .emergencies-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        
+        .emergency-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .emergency-card.pending {
+            border-color: #ff6b6b;
+            background: rgba(255,107,107,0.1);
+        }
+        
+        .emergency-card.in-progress {
+            border-color: #ffa94d;
+            background: rgba(255,169,77,0.1);
+        }
+        
+        .emergency-card.resolved {
+            border-color: #51cf66;
+            background: rgba(81,207,102,0.1);
+        }
+        
+        .emergency-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .emergency-id {
+            font-family: monospace;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .emergency-time {
+            color: #adb5bd;
+            font-size: 14px;
+        }
+        
+        .emergency-location {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+        
+        .location-icon {
+            color: #4dabf7;
+        }
+        
+        .coordinates {
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .emergency-details {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        
+        /* Status Controls */
+        .status-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .status-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .status-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .btn-pending {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .btn-in-progress {
+            background: #ffa94d;
+            color: white;
+        }
+        
+        .btn-resolved {
+            background: #51cf66;
+            color: white;
+        }
+        
+        .btn-cancel {
+            background: #868e96;
+            color: white;
+        }
+        
+        /* Checkboxes Grid */
+        .checkpoints-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .checkpoints-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .checkpoint-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .checkpoint-item:hover {
+            background: rgba(255,255,255,0.15);
+            transform: translateY(-2px);
+        }
+        
+        .checkpoint-item.checked {
+            background: rgba(81,207,102,0.3);
+            border-color: #51cf66;
+        }
+        
+        .custom-checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #adb5bd;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .checkpoint-item.checked .custom-checkbox {
+            background: #51cf66;
+            border-color: #51cf66;
+        }
+        
+        .custom-checkbox::after {
+            content: '✓';
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .checkpoint-item.checked .custom-checkbox::after {
+            opacity: 1;
+        }
+        
+        .checkpoint-info {
+            flex: 1;
+        }
+        
+        .checkpoint-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .checkpoint-distance {
+            font-size: 12px;
+            color: #adb5bd;
+        }
+        
+        /* Notifications */
+        .notification-area {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            z-index: 1000;
+        }
+        
+        .notification {
+            background: rgba(255,107,107,0.9);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+            backdrop-filter: blur(10px);
+            border-left: 5px solid #ff4757;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .notification.warning {
+            background: rgba(255,169,77,0.9);
+            border-left-color: #ff922b;
+        }
+        
+        .notification.success {
+            background: rgba(81,207,102,0.9);
+            border-left-color: #40c057;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .notification-icon {
+            font-size: 24px;
+        }
+        
+        .notification-content {
+            flex: 1;
+        }
+        
+        .notification-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .notification-time {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        /* Statistics */
+        .stats-section {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #4dabf7;
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            color: #adb5bd;
+            font-size: 14px;
+        }
+        
+        /* No Data Message */
+        .no-data {
+            text-align: center;
+            padding: 40px 20px;
+            color: #adb5bd;
+            font-style: italic;
+        }
+        
+        /* Animations */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Scrollbar Styling */
+        .emergencies-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .emergencies-list::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+        
+        .emergencies-list::-webkit-scrollbar-thumb {
+            background: #4dabf7;
+            border-radius: 4px;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .dashboard {
+                gap: 15px;
+            }
+            
+            .checkpoints-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+            
+            .status-controls {
+                flex-direction: column;
+            }
+            
+            .notification-area {
+                width: calc(100% - 40px);
+            }
+            
+            iframe {
+                height: 400px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            iframe {
+                height: 300px;
+            }
+            
+            .checkpoints-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stat-card {
+                padding: 15px;
+            }
+            
+            .stat-number {
+                font-size: 28px;
+            }
+        }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-2">
+<body>
+    <div class="container">
         <!-- Header -->
-        <div class="flex justify-between items-center mb-2">
-            <h1 class="text-lg font-bold text-gray-900">Crew Dashboard</h1>
-            <div class="flex items-center">
-                <span id="connectionStatus" class="px-2 py-1">
-                    <i class="fas fa-wifi text-gray-500"></i>
-                </span>
-            </div>
+        <div class="header">
+            <h1>🏃 10K 跑步賽事 - 工作人員控制台</h1>
+            <div class="subtitle">實時監控跑手位置及緊急狀況</div>
         </div>
-
-        <!-- Crew Controls -->
-        <div class="grid grid-cols-2 gap-2 mb-2">
-            <div class="bg-white p-2 rounded border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs">Share Location</span>
-                    <label class="relative inline-flex items-center">
-                        <input type="checkbox" id="shareLocation" checked class="sr-only peer">
-                        <div class="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
+        
+        <!-- Dashboard -->
+        <div class="dashboard">
+            <!-- Map Section -->
+            <div class="map-section">
+                <div class="map-wrapper">
+                    <iframe 
+                        src="https://www.google.com/maps/d/embed?mid=1_r48CrjO3UAWiZz2xNHBxHgXGbekc-0&ehbc=2E312F&noprof=1"
+                        allowfullscreen>
+                    </iframe>
                 </div>
             </div>
-
-            <div class="bg-white p-2 rounded border border-gray-200">
-                <label class="block text-xs mb-1">Transport</label>
-                <select id="transportMode" class="w-full text-xs border-gray-300 rounded">
-                    <option value="walk">Walk</option>
-                    <option value="bike">Bike</option>
-                </select>
-            </div>
-
-            <div class="bg-white p-2 rounded border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs">First Aid</span>
-                    <label class="relative inline-flex items-center">
-                        <input type="checkbox" id="firstAid" class="sr-only peer">
-                        <div class="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-red-600"></div>
-                    </label>
+            
+            <!-- Active Emergencies -->
+            <div class="emergencies-section">
+                <div class="section-title">
+                    <h2>🚨 緊急求助事件</h2>
+                    <span class="emergency-count" id="emergencyCount">0</span>
+                </div>
+                
+                <div class="emergencies-list" id="emergenciesList">
+                    <div class="no-data" id="noEmergencies">
+                        目前沒有緊急求助事件
+                    </div>
                 </div>
             </div>
-
-            <div class="bg-white p-2 rounded border border-gray-200 flex items-center">
-                <button onclick="updateCrewStatus()" class="w-full py-1 bg-blue-500 text-white text-xs rounded">
-                    Update
-                </button>
-            </div>
-        </div>
-
-        <!-- Emergency Alerts -->
-        <div id="emergencyPanel" class="hidden mb-2">
-            <div class="bg-red-50 border border-red-200 rounded p-2">
-                <div class="flex justify-between items-center mb-1">
-                    <h2 class="text-sm font-bold text-red-700">EMERGENCY</h2>
-                    <span id="emergencyCount" class="bg-red-500 text-white px-2 py-0.5 rounded text-xs">0</span>
+            
+            <!-- Checkpoints -->
+            <div class="checkpoints-section">
+                <div class="section-title">
+                    <h2>📍 檢查點狀態</h2>
                 </div>
-                <div id="emergencyList" class="space-y-1 max-h-32 overflow-y-auto">
-                    <!-- Emergencies here -->
+                
+                <div class="checkpoints-grid" id="checkpointsGrid">
+                    <!-- Checkpoints will be added here -->
                 </div>
             </div>
-        </div>
-
-        <!-- Map -->
-        <div class="mb-2">
-            <div class="flex justify-between items-center mb-1">
-                <h2 class="text-sm font-semibold">Live Map</h2>
-                <div class="flex space-x-1">
-                    <button onclick="centerOnMyLocation()" class="px-2 py-0.5 bg-blue-500 text-white text-xs rounded">
-                        My Location
-                    </button>
+            
+            <!-- Statistics -->
+            <div class="stats-section">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalRunners">125</div>
+                    <div class="stat-label">總跑手數量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="activeEmergencies">0</div>
+                    <div class="stat-label">活躍緊急事件</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="resolvedEmergencies">0</div>
+                    <div class="stat-label">已解決事件</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="checkpointsCleared">12%</div>
+                    <div class="stat-label">檢查點完成率</div>
                 </div>
             </div>
-            <div id="map" class="rounded border border-gray-300"></div>
         </div>
-
-        <!-- Stats -->
-        <div class="grid grid-cols-2 gap-2 mb-2">
-            <div class="bg-white p-2 rounded border border-gray-200">
-                <div class="text-sm font-bold text-gray-900" id="runnerCount">0</div>
-                <div class="text-xs text-gray-600">Runners</div>
-            </div>
-            <div class="bg-white p-2 rounded border border-gray-200">
-                <div class="text-sm font-bold text-gray-900" id="crewCount">0</div>
-                <div class="text-xs text-gray-600">Crew</div>
-            </div>
-        </div>
-
-        <!-- Runners List -->
-        <div class="bg-white p-2 rounded border border-gray-200">
-            <h3 class="text-sm font-semibold mb-1">Runners</h3>
-            <div id="runnersList" class="space-y-1 max-h-32 overflow-y-auto">
-                <!-- Runners here -->
-            </div>
-        </div>
+        
+        <!-- Notifications Area -->
+        <div class="notification-area" id="notificationArea"></div>
     </div>
 
     <script>
-        // Variables
-        let socket = null;
-        let map = null;
-        let crewMarker = null;
-        let runnerMarkers = {};
-        let crewMarkers = {};
-        let emergencyMarkers = {};
-        let crewPosition = null;
-        let crewData = {
-            transport: 'walk',
-            first_aid: false,
-            share_location: true
-        };
-        let runners = {};
-        let allCrew = {};
-        let emergencies = {};
-
+        // DOM Elements
+        const emergenciesList = document.getElementById('emergenciesList');
+        const emergencyCount = document.getElementById('emergencyCount');
+        const checkpointsGrid = document.getElementById('checkpointsGrid');
+        const notificationArea = document.getElementById('notificationArea');
+        const totalRunners = document.getElementById('totalRunners');
+        const activeEmergenciesElement = document.getElementById('activeEmergencies');
+        const resolvedEmergenciesElement = document.getElementById('resolvedEmergencies');
+        const checkpointsClearedElement = document.getElementById('checkpointsCleared');
+        const noEmergencies = document.getElementById('noEmergencies');
+        
+        // State
+        let emergencies = [];
+        let checkpoints = [];
+        let notifications = [];
+        
+        // Mock Data
+        const mockCheckpoints = [
+            { id: 1, name: "起點 - 大圍足球場", distance: "0K", checked: true },
+            { id: 2, name: "沙田翠榕橋", distance: "2.5K", checked: false },
+            { id: 3, name: "沙田雙子橋", distance: "5K", checked: false },
+            { id: 4, name: "城門河畔", distance: "7.5K", checked: false },
+            { id: 5, name: "終點 - 大圍足球場", distance: "10K", checked: false },
+            { id: 6, name: "水站 A", distance: "3K", checked: false },
+            { id: 7, name: "水站 B", distance: "7K", checked: false },
+            { id: 8, name: "醫療站", distance: "5K", checked: false }
+        ];
+        
         // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            initMap();
-            initWebSocket();
-            startLocationTracking();
-            setupEventListeners();
-        });
-
-        // Initialize map
-        function initMap() {
-            map = L.map('map').setView([25.0338, 121.5645], 15);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
+        function init() {
+            // Load emergencies from localStorage
+            loadEmergencies();
+            
+            // Initialize checkpoints
+            initCheckpoints();
+            
+            // Setup auto-refresh
+            setInterval(loadEmergencies, 5000);
+            
+            // Listen for storage events (from user page)
+            window.addEventListener('storage', handleStorageEvent);
+            
+            // Update statistics
+            updateStatistics();
         }
-
-        // Update crew marker
-        function updateCrewMarker() {
-            if (!crewPosition) return;
-            
-            let iconClass = 'crew-walk';
-            let iconText = 'W';
-            
-            if (crewData.transport === 'bike') {
-                iconClass = 'crew-bike';
-                iconText = 'B';
-            }
-            
-            if (crewData.first_aid) {
-                iconClass = 'crew-aid';
-                iconText = 'A';
-            }
-            
-            if (!crewMarker) {
-                crewMarker = L.marker([crewPosition.lat, crewPosition.lng], {
-                    icon: L.divIcon({
-                        html: `<div class="w-8 h-8 rounded-full ${iconClass} flex items-center justify-center text-sm">${iconText}</div>`,
-                        className: 'custom-div-icon',
-                        iconSize: [32, 32]
-                    })
-                }).addTo(map);
-            } else {
-                crewMarker.setLatLng([crewPosition.lat, crewPosition.lng]);
-                crewMarker.setIcon(L.divIcon({
-                    html: `<div class="w-8 h-8 rounded-full ${iconClass} flex items-center justify-center text-sm">${iconText}</div>`,
-                    className: 'custom-div-icon',
-                    iconSize: [32, 32]
-                }));
-            }
-        }
-
-        // Location tracking
-        function startLocationTracking() {
-            if (!navigator.geolocation) return;
-            
-            navigator.geolocation.watchPosition(
-                handlePositionUpdate,
-                handlePositionError,
-                { enableHighAccuracy: true }
-            );
-            
-            setInterval(sendLocationUpdate, 10000);
-        }
-
-        function handlePositionUpdate(position) {
-            crewPosition = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude
-            };
-            
-            updateCrewMarker();
-            sendLocationUpdate();
-        }
-
-        function handlePositionError(error) {
-            console.error('GPS error:', error);
-        }
-
-        // WebSocket
-        function initWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            const socketUrl = `${protocol}//${host}`;
-            
-            socket = io(socketUrl, {
-                transports: ['websocket', 'polling'],
-                reconnection: true
-            });
-            
-            // Event handlers
-            socket.on('connect', handleSocketConnect);
-            socket.on('disconnect', handleSocketDisconnect);
-            socket.on('connected', handleConnected);
-            socket.on('registration_success', handleRegistrationSuccess);
-            socket.on('initial_data', handleInitialData);
-            socket.on('user_location_updated', handleUserLocationUpdated);
-            socket.on('crew_location_updated', handleCrewLocationUpdated);
-            socket.on('user_joined', handleUserJoined);
-            socket.on('user_left', handleUserLeft);
-            socket.on('crew_joined', handleCrewJoined);
-            socket.on('crew_left', handleCrewLeft);
-            socket.on('emergency_alert', handleEmergencyAlert);
-            socket.on('emergency_resolved', handleEmergencyResolved);
-        }
-
-        function handleSocketConnect() {
-            updateConnectionStatus('text-yellow-500');
-        }
-
-        function handleSocketDisconnect() {
-            updateConnectionStatus('text-red-500');
-        }
-
-        function handleConnected(data) {
-            updateConnectionStatus('text-green-500');
-            
-            socket.emit('register_crew', {
-                location: crewPosition ? [crewPosition.lat, crewPosition.lng] : [25.0338, 121.5645],
-                transport: crewData.transport,
-                first_aid: crewData.first_aid,
-                share_location: crewData.share_location
-            });
-            
-            socket.emit('get_initial_data');
-        }
-
-        function handleRegistrationSuccess(data) {
-            // No action needed
-        }
-
-        function handleInitialData(data) {
-            // Clear markers
-            Object.values(runnerMarkers).forEach(marker => map.removeLayer(marker));
-            Object.values(crewMarkers).forEach(marker => map.removeLayer(marker));
-            Object.values(emergencyMarkers).forEach(marker => map.removeLayer(marker));
-            runnerMarkers = {};
-            crewMarkers = {};
-            emergencyMarkers = {};
-            
-            // Store data
-            runners = data.users;
-            allCrew = data.crew;
-            emergencies = data.emergencies;
-            
-            // Add runners
-            Object.entries(runners).forEach(([runnerId, runner]) => {
-                addRunnerMarker(runnerId, runner);
-            });
-            
-            // Add other crew
-            Object.entries(allCrew).forEach(([crewId, crew]) => {
-                if (crewId !== socket.id) {
-                    addOtherCrewMarker(crewId, crew);
-                }
-            });
-            
-            // Add emergencies
-            Object.entries(emergencies).forEach(([emergencyId, emergency]) => {
-                addEmergencyMarker(emergencyId, emergency);
-            });
-            
-            // Update UI
-            updateStats();
-            updateRunnersList();
-            updateEmergencyList();
-        }
-
-        function addRunnerMarker(runnerId, runner) {
-            const isEmergency = runner.emergency || emergencies[runnerId];
-            const markerClass = isEmergency ? 'emergency-icon' : 'runner-icon';
-            
-            if (runnerMarkers[runnerId]) {
-                runnerMarkers[runnerId].setLatLng([runner.location[0], runner.location[1]]);
-                runnerMarkers[runnerId].setStyle({
-                    fillColor: isEmergency ? '#EF4444' : '#3B82F6',
-                    color: isEmergency ? '#DC2626' : '#1D4ED8',
-                    className: markerClass
+        
+        // Load emergencies
+        function loadEmergencies() {
+            try {
+                const storedEmergencies = localStorage.getItem('activeEmergencies');
+                emergencies = storedEmergencies ? JSON.parse(storedEmergencies) : [];
+                
+                // Remove old emergencies (older than 2 hours)
+                const now = Date.now();
+                emergencies = emergencies.filter(emergency => {
+                    const emergencyTime = new Date(emergency.timestamp).getTime();
+                    return (now - emergencyTime) < 2 * 60 * 60 * 1000; // 2 hours
                 });
-            } else {
-                const marker = L.circleMarker([runner.location[0], runner.location[1]], {
-                    radius: 8,
-                    fillColor: isEmergency ? '#EF4444' : '#3B82F6',
-                    color: isEmergency ? '#DC2626' : '#1D4ED8',
-                    weight: 2,
-                    fillOpacity: 0.8,
-                    className: markerClass
-                }).addTo(map);
                 
-                runnerMarkers[runnerId] = marker;
+                // Save back to localStorage
+                localStorage.setItem('activeEmergencies', JSON.stringify(emergencies));
+                
+                // Update UI
+                renderEmergencies();
+                updateStatistics();
+            } catch (error) {
+                console.error('Error loading emergencies:', error);
             }
         }
-
-        function addOtherCrewMarker(crewId, crew) {
-            let iconClass = 'crew-walk';
-            let iconText = 'W';
-            
-            if (crew.transport === 'bike') {
-                iconClass = 'crew-bike';
-                iconText = 'B';
-            }
-            
-            if (crew.first_aid) {
-                iconClass = 'crew-aid';
-                iconText = 'A';
-            }
-            
-            if (crewMarkers[crewId]) {
-                crewMarkers[crewId].setLatLng([crew.location[0], crew.location[1]]);
-            } else {
-                const marker = L.marker([crew.location[0], crew.location[1]], {
-                    icon: L.divIcon({
-                        html: `<div class="w-6 h-6 rounded-full ${iconClass} flex items-center justify-center text-xs">${iconText}</div>`,
-                        className: 'custom-div-icon',
-                        iconSize: [24, 24]
-                    })
-                }).addTo(map);
-                
-                crewMarkers[crewId] = marker;
-            }
+        
+        // Initialize checkpoints
+        function initCheckpoints() {
+            checkpoints = [...mockCheckpoints];
+            renderCheckpoints();
         }
-
-        function addEmergencyMarker(emergencyId, emergency) {
-            if (emergencyMarkers[emergencyId]) {
-                emergencyMarkers[emergencyId].setLatLng(emergency.location);
-            } else {
-                const marker = L.marker(emergency.location, {
-                    icon: L.divIcon({
-                        html: `<div class="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-sm">!</div>`,
-                        className: 'custom-div-icon',
-                        iconSize: [40, 40]
-                    })
-                }).addTo(map);
-                
-                emergencyMarkers[emergencyId] = marker;
-            }
-        }
-
-        // Control functions
-        function setupEventListeners() {
-            document.getElementById('shareLocation').addEventListener('change', function() {
-                crewData.share_location = this.checked;
-                sendLocationUpdate();
-            });
+        
+        // Render emergencies
+        function renderEmergencies() {
+            emergenciesList.innerHTML = '';
             
-            document.getElementById('firstAid').addEventListener('change', function() {
-                crewData.first_aid = this.checked;
-                updateCrewMarker();
-                sendLocationUpdate();
+            if (emergencies.length === 0) {
+                noEmergencies.style.display = 'block';
+                emergencyCount.textContent = '0';
+                return;
+            }
+            
+            noEmergencies.style.display = 'none';
+            emergencyCount.textContent = emergencies.length.toString();
+            
+            emergencies.forEach((emergency, index) => {
+                const card = createEmergencyCard(emergency, index);
+                emergenciesList.appendChild(card);
             });
         }
-
-        function updateCrewStatus() {
-            const transport = document.getElementById('transportMode').value;
-            const firstAid = document.getElementById('firstAid').checked;
-            const shareLocation = document.getElementById('shareLocation').checked;
+        
+        // Create emergency card
+        function createEmergencyCard(emergency, index) {
+            const card = document.createElement('div');
+            card.className = `emergency-card ${emergency.status || 'pending'}`;
             
-            crewData.transport = transport;
-            crewData.first_aid = firstAid;
-            crewData.share_location = shareLocation;
+            const time = new Date(emergency.timestamp);
+            const timeString = time.toLocaleTimeString('zh-HK');
             
-            updateCrewMarker();
-            sendLocationUpdate();
-        }
-
-        // Emergency functions
-        function handleEmergencyAlert(data) {
-            emergencies[data.emergency_id] = data;
-            addEmergencyMarker(data.emergency_id, data);
-            updateStats();
-            updateEmergencyList();
+            card.innerHTML = `
+                <div class="emergency-header">
+                    <span class="emergency-id">#${emergency.id.toString().slice(-6)}</span>
+                    <span class="emergency-time">${timeString}</span>
+                </div>
+                
+                <div class="emergency-location">
+                    <span class="location-icon">📍</span>
+                    <span class="coordinates">
+                        ${emergency.location.lat.toFixed(6)}, ${emergency.location.lng.toFixed(6)}
+                    </span>
+                </div>
+                
+                <div class="emergency-details">
+                    ${emergency.details || '未提供詳細信息'}
+                </div>
+                
+                <div class="status-controls">
+                    <button class="status-btn btn-pending" onclick="updateEmergencyStatus(${index}, 'pending')">
+                        ⚠️ 待處理
+                    </button>
+                    <button class="status-btn btn-in-progress" onclick="updateEmergencyStatus(${index}, 'in-progress')">
+                        🚗 處理中
+                    </button>
+                    <button class="status-btn btn-resolved" onclick="resolveEmergency(${index})">
+                        ✅ 已解決
+                    </button>
+                    <button class="status-btn btn-cancel" onclick="cancelEmergency(${index})">
+                        ❌ 取消
+                    </button>
+                </div>
+            `;
             
-            // Show notification
-            alert(`EMERGENCY: Runner needs help!`);
+            return card;
         }
-
-        function handleEmergencyResolved(data) {
-            if (emergencyMarkers[data.emergency_id]) {
-                map.removeLayer(emergencyMarkers[data.emergency_id]);
-                delete emergencyMarkers[data.emergency_id];
-            }
-            
-            delete emergencies[data.emergency_id];
-            updateStats();
-            updateEmergencyList();
-        }
-
-        // UI updates
-        function updateConnectionStatus(color) {
-            const icon = document.querySelector('#connectionStatus i');
-            icon.className = `fas fa-wifi ${color}`;
-        }
-
-        function sendLocationUpdate() {
-            if (!crewPosition || !socket || !socket.connected) return;
-            
-            socket.emit('crew_location_update', {
-                lat: crewPosition.lat,
-                lng: crewPosition.lng,
-                transport: crewData.transport,
-                first_aid: crewData.first_aid,
-                share_location: crewData.share_location
-            });
-        }
-
-        function centerOnMyLocation() {
-            if (crewPosition) {
-                map.setView([crewPosition.lat, crewPosition.lng], 16);
-            }
-        }
-
-        function updateStats() {
-            document.getElementById('runnerCount').textContent = Object.keys(runners).length;
-            document.getElementById('crewCount').textContent = Object.keys(allCrew).length + 1;
-            document.getElementById('emergencyCount').textContent = Object.keys(emergencies).length;
-            
-            if (Object.keys(emergencies).length > 0) {
-                document.getElementById('emergencyPanel').classList.remove('hidden');
-            } else {
-                document.getElementById('emergencyPanel').classList.add('hidden');
+        
+        // Update emergency status
+        function updateEmergencyStatus(index, status) {
+            if (index >= 0 && index < emergencies.length) {
+                emergencies[index].status = status;
+                emergencies[index].updated = new Date().toISOString();
+                
+                // Save to localStorage
+                localStorage.setItem('activeEmergencies', JSON.stringify(emergencies));
+                
+                // Update UI
+                renderEmergencies();
+                updateStatistics();
+                
+                // Show notification
+                showNotification(
+                    '狀態更新',
+                    `緊急事件 #${emergencies[index].id.toString().slice(-6)} 已標記為 ${getStatusText(status)}`,
+                    status === 'resolved' ? 'success' : 'warning'
+                );
             }
         }
-
-        function updateRunnersList() {
-            const container = document.getElementById('runnersList');
-            container.innerHTML = '';
+        
+        // Resolve emergency
+        function resolveEmergency(index) {
+            if (confirm('確定此緊急事件已解決？')) {
+                updateEmergencyStatus(index, 'resolved');
+                
+                // Move to resolved list
+                const resolvedEmergencies = JSON.parse(localStorage.getItem('resolvedEmergencies') || '[]');
+                resolvedEmergencies.push(emergencies[index]);
+                localStorage.setItem('resolvedEmergencies', JSON.stringify(resolvedEmergencies));
+                
+                // Remove from active list
+                emergencies.splice(index, 1);
+                localStorage.setItem('activeEmergencies', JSON.stringify(emergencies));
+                
+                // Update UI
+                renderEmergencies();
+                updateStatistics();
+                
+                showNotification(
+                    '事件已解決',
+                    '緊急事件已標記為已解決',
+                    'success'
+                );
+            }
+        }
+        
+        // Cancel emergency
+        function cancelEmergency(index) {
+            if (confirm('確定要取消此緊急事件嗎？此操作不可撤銷。')) {
+                emergencies.splice(index, 1);
+                localStorage.setItem('activeEmergencies', JSON.stringify(emergencies));
+                
+                renderEmergencies();
+                updateStatistics();
+                
+                showNotification(
+                    '事件已取消',
+                    '緊急事件已取消',
+                    'warning'
+                );
+            }
+        }
+        
+        // Get status text
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '待處理',
+                'in-progress': '處理中',
+                'resolved': '已解決'
+            };
+            return statusMap[status] || status;
+        }
+        
+        // Render checkpoints
+        function renderCheckpoints() {
+            checkpointsGrid.innerHTML = '';
             
-            Object.entries(runners).forEach(([runnerId, runner]) => {
-                const isEmergency = runner.emergency || emergencies[runnerId];
+            checkpoints.forEach((checkpoint, index) => {
                 const item = document.createElement('div');
-                item.className = `text-xs p-1 rounded ${isEmergency ? 'bg-red-100' : 'bg-gray-100'}`;
-                item.textContent = `Runner${isEmergency ? ' (EMERGENCY)' : ''}`;
-                container.appendChild(item);
-            });
-            
-            if (Object.keys(runners).length === 0) {
-                container.innerHTML = '<div class="text-xs text-gray-500">No runners</div>';
-            }
-        }
-
-        function updateEmergencyList() {
-            const container = document.getElementById('emergencyList');
-            container.innerHTML = '';
-            
-            Object.values(emergencies).forEach(emergency => {
-                const item = document.createElement('div');
-                item.className = 'text-xs p-1 bg-white rounded border border-red-200';
+                item.className = `checkpoint-item ${checkpoint.checked ? 'checked' : ''}`;
+                item.onclick = () => toggleCheckpoint(index);
+                
                 item.innerHTML = `
-                    <div class="font-bold text-red-700">EMERGENCY</div>
-                    <div class="text-gray-600">Runner needs help</div>
+                    <div class="custom-checkbox"></div>
+                    <div class="checkpoint-info">
+                        <div class="checkpoint-name">${checkpoint.name}</div>
+                        <div class="checkpoint-distance">距離: ${checkpoint.distance}</div>
+                    </div>
                 `;
-                container.appendChild(item);
+                
+                checkpointsGrid.appendChild(item);
             });
         }
-
-        // Other handlers
-        function handleUserLocationUpdated(data) {
-            if (runners[data.sid]) {
-                runners[data.sid].location = data.location;
-                runners[data.sid].emergency = data.emergency;
-                addRunnerMarker(data.sid, runners[data.sid]);
-                updateRunnersList();
-            }
-        }
-
-        function handleCrewLocationUpdated(data) {
-            if (data.sid === socket.id) return;
+        
+        // Toggle checkpoint
+        function toggleCheckpoint(index) {
+            checkpoints[index].checked = !checkpoints[index].checked;
+            renderCheckpoints();
+            updateStatistics();
             
-            if (allCrew[data.sid]) {
-                allCrew[data.sid] = { ...allCrew[data.sid], ...data };
-                addOtherCrewMarker(data.sid, allCrew[data.sid]);
+            // Save to localStorage
+            localStorage.setItem('checkpoints', JSON.stringify(checkpoints));
+        }
+        
+        // Update statistics
+        function updateStatistics() {
+            // Total runners (mock)
+            totalRunners.textContent = '125';
+            
+            // Active emergencies
+            const activeCount = emergencies.filter(e => e.status !== 'resolved').length;
+            activeEmergenciesElement.textContent = activeCount.toString();
+            
+            // Resolved emergencies
+            const resolvedList = JSON.parse(localStorage.getItem('resolvedEmergencies') || '[]');
+            resolvedEmergenciesElement.textContent = resolvedList.length.toString();
+            
+            // Checkpoints cleared
+            const checkedCount = checkpoints.filter(c => c.checked).length;
+            const percentage = Math.round((checkedCount / checkpoints.length) * 100);
+            checkpointsClearedElement.textContent = `${percentage}%`;
+        }
+        
+        // Show notification
+        function showNotification(title, message, type = 'warning') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            const time = new Date();
+            const timeString = time.toLocaleTimeString('zh-HK');
+            
+            notification.innerHTML = `
+                <div class="notification-icon">
+                    ${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '🚨'}
+                </div>
+                <div class="notification-content">
+                    <div class="notification-title">${title}</div>
+                    <div class="notification-message">${message}</div>
+                    <div class="notification-time">${timeString}</div>
+                </div>
+            `;
+            
+            notificationArea.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 5000);
+        }
+        
+        // Handle storage events
+        function handleStorageEvent(event) {
+            if (event.key === 'activeEmergencies') {
+                loadEmergencies();
+                
+                // Show notification for new emergencies
+                try {
+                    const newEmergencies = event.newValue ? JSON.parse(event.newValue) : [];
+                    const oldEmergencies = event.oldValue ? JSON.parse(event.oldValue) : [];
+                    
+                    if (newEmergencies.length > oldEmergencies.length) {
+                        const newEmergency = newEmergencies[newEmergencies.length - 1];
+                        showNotification(
+                            '新緊急事件',
+                            `跑手發出緊急求助: ${newEmergency.details?.substring(0, 50) || '未提供詳細信息'}...`,
+                            'warning'
+                        );
+                        
+                        // Play sound notification
+                        playNotificationSound();
+                    }
+                } catch (error) {
+                    console.error('Error handling storage event:', error);
+                }
             }
         }
-
-        function handleUserJoined(data) {
-            runners[data.sid] = data;
-            addRunnerMarker(data.sid, data);
-            updateStats();
-            updateRunnersList();
-        }
-
-        function handleUserLeft(data) {
-            if (runnerMarkers[data.sid]) {
-                map.removeLayer(runnerMarkers[data.sid]);
-                delete runnerMarkers[data.sid];
-            }
-            delete runners[data.sid];
-            updateStats();
-            updateRunnersList();
-        }
-
-        function handleCrewJoined(data) {
-            if (data.sid !== socket.id) {
-                allCrew[data.sid] = data;
-                addOtherCrewMarker(data.sid, data);
-                updateStats();
+        
+        // Play notification sound
+        function playNotificationSound() {
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
+                audio.volume = 0.3;
+                audio.play();
+            } catch (error) {
+                console.log('Could not play notification sound');
             }
         }
-
-        function handleCrewLeft(data) {
-            if (crewMarkers[data.sid]) {
-                map.removeLayer(crewMarkers[data.sid]);
-                delete crewMarkers[data.sid];
-            }
-            delete allCrew[data.sid];
-            updateStats();
-        }
+        
+        // Initialize on load
+        window.addEventListener('load', init);
+        
+        // Make functions available globally
+        window.updateEmergencyStatus = updateEmergencyStatus;
+        window.resolveEmergency = resolveEmergency;
+        window.cancelEmergency = cancelEmergency;
+        window.toggleCheckpoint = toggleCheckpoint;
     </script>
 </body>
 </html>
