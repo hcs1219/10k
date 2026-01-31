@@ -1,75 +1,75 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>跑步追蹤 - 跑者</title>
+    <title>Race Tracker - Runner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        #map { height: 60vh; }
+        #map { height: 65vh; }
         .runner-icon { background: #3B82F6; }
-        .crew-icon-walk { background: #F97316; }
-        .crew-icon-bike { background: #F59E0B; }
-        .crew-icon-firstaid { background: #DC2626; color: white; }
+        .crew-walk { background: #F97316; }
+        .crew-bike { background: #F59E0B; }
+        .crew-aid { background: #DC2626; color: white; }
     </style>
 </head>
 <body class="bg-gray-50">
     <div class="container mx-auto px-4 py-2">
-        <!-- 標題 -->
-        <div class="flex justify-between items-center mb-3">
-            <h1 class="text-xl font-bold text-gray-900">跑步追蹤</h1>
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-lg font-bold text-gray-900">Race Tracker</h1>
             <div class="flex items-center">
-                <span id="connectionStatus" class="px-2 py-1 rounded-full bg-gray-100">
+                <span id="connectionStatus" class="px-2 py-1">
                     <i class="fas fa-wifi text-gray-500"></i>
                 </span>
             </div>
         </div>
 
-        <!-- 路線選擇 -->
-        <div class="mb-3">
-            <div class="flex space-x-2 overflow-x-auto pb-2">
+        <!-- Route Selection -->
+        <div class="mb-2">
+            <div class="flex space-x-1">
                 <button onclick="selectRoute('route_2k')" id="route_2k" 
-                        class="route-btn flex-shrink-0 px-3 py-2 bg-blue-500 text-white rounded-lg text-sm">
-                    2km 路線
+                        class="flex-1 py-1 bg-blue-500 text-white rounded text-sm">
+                    2km
                 </button>
                 <button onclick="selectRoute('route_5k')" id="route_5k" 
-                        class="route-btn flex-shrink-0 px-3 py-2 bg-green-500 text-white rounded-lg text-sm">
-                    5km 路線
+                        class="flex-1 py-1 bg-green-500 text-white rounded text-sm">
+                    5km
                 </button>
                 <button onclick="selectRoute('route_10k')" id="route_10k" 
-                        class="route-btn flex-shrink-0 px-3 py-2 bg-purple-500 text-white rounded-lg text-sm">
-                    10km 路線
+                        class="flex-1 py-1 bg-purple-500 text-white rounded text-sm">
+                    10km
                 </button>
             </div>
         </div>
 
-        <!-- 緊急按鈕 -->
-        <div class="mb-3">
+        <!-- Emergency Button -->
+        <div class="mb-2">
             <button id="emergencyBtn" onclick="requestEmergency()" 
-                    class="w-full py-3 px-4 bg-red-500 text-white font-bold rounded-lg">
-                緊急求助
+                    class="w-full py-2 bg-red-500 text-white font-bold rounded">
+                EMERGENCY
             </button>
             <button id="cancelEmergencyBtn" onclick="cancelEmergency()" 
-                    class="hidden w-full py-3 px-4 bg-green-500 text-white font-bold rounded-lg mt-2">
-                取消求助
+                    class="hidden w-full py-2 bg-green-500 text-white font-bold rounded mt-1">
+                CANCEL
             </button>
         </div>
 
-        <!-- 地圖 -->
-        <div id="map" class="rounded-lg border border-gray-300"></div>
+        <!-- Map -->
+        <div id="map" class="rounded border border-gray-300"></div>
 
-        <!-- 位置資訊 -->
-        <div class="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-            <div class="text-sm text-gray-600">您的位置</div>
-            <div id="currentLocation" class="font-mono text-sm">取得位置中...</div>
+        <!-- Location -->
+        <div class="mt-2 p-2 bg-white rounded border border-gray-200">
+            <div class="text-xs text-gray-600">Your Location</div>
+            <div id="currentLocation" class="font-mono text-xs">Getting location...</div>
         </div>
     </div>
 
     <script>
-        // 全域變數
+        // Variables
         let socket = null;
         let map = null;
         let runnerMarker = null;
@@ -79,14 +79,14 @@
         let userPosition = null;
         let emergencyId = null;
 
-        // 初始化
+        // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             initMap();
             initWebSocket();
             startLocationTracking();
         });
 
-        // 初始化地圖
+        // Initialize map
         function initMap() {
             map = L.map('map').setView([25.0338, 121.5645], 15);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -96,28 +96,28 @@
             loadRoutes();
         }
 
-        // 載入路線
+        // Load routes
         async function loadRoutes() {
             try {
                 const response = await fetch('/api/routes');
                 window.routes = await response.json();
                 selectRoute('route_2k');
             } catch (error) {
-                console.error('載入路線失敗:', error);
+                console.error('Failed to load routes:', error);
             }
         }
 
-        // 選擇路線
+        // Select route
         function selectRoute(routeId) {
             currentRoute = routeId;
             
-            // 更新按鈕
-            document.querySelectorAll('.route-btn').forEach(btn => {
-                btn.classList.remove('ring-2', 'ring-offset-2');
+            // Update buttons
+            document.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('ring-1', 'ring-white');
             });
-            event.target.classList.add('ring-2', 'ring-offset-2', 'ring-blue-500');
+            event.target.classList.add('ring-1', 'ring-white');
             
-            // 顯示路線
+            // Show route
             if (window.routeLayer) {
                 map.removeLayer(window.routeLayer);
             }
@@ -126,16 +126,16 @@
             if (route && route.path) {
                 window.routeLayer = L.polyline(route.path, {
                     color: route.color,
-                    weight: 4
+                    weight: 3
                 }).addTo(map);
                 map.fitBounds(window.routeLayer.getBounds());
             }
         }
 
-        // 位置追蹤
+        // Location tracking
         function startLocationTracking() {
             if (!navigator.geolocation) {
-                showMessage('裝置不支援定位功能');
+                showMessage('GPS not supported');
                 return;
             }
             
@@ -160,8 +160,8 @@
         }
 
         function handlePositionError(error) {
-            console.error('定位錯誤:', error);
-            showMessage('無法取得位置，請檢查定位設定');
+            console.error('GPS error:', error);
+            showMessage('GPS error');
         }
 
         function updateLocationDisplay() {
@@ -176,7 +176,7 @@
             
             if (!runnerMarker) {
                 runnerMarker = L.circleMarker([userPosition.lat, userPosition.lng], {
-                    radius: 10,
+                    radius: 8,
                     fillColor: emergencyId ? '#EF4444' : '#3B82F6',
                     color: '#1D4ED8',
                     weight: 2,
@@ -187,10 +187,6 @@
                 runnerMarker.setStyle({
                     fillColor: emergencyId ? '#EF4444' : '#3B82F6'
                 });
-            }
-            
-            if (!map.getBounds().contains(runnerMarker.getLatLng())) {
-                map.panTo([userPosition.lat, userPosition.lng]);
             }
         }
 
@@ -205,7 +201,7 @@
                 reconnection: true
             });
             
-            // 事件處理
+            // Event handlers
             socket.on('connect', handleSocketConnect);
             socket.on('disconnect', handleSocketDisconnect);
             socket.on('connected', handleConnected);
@@ -223,15 +219,15 @@
         }
 
         function handleSocketConnect() {
-            updateConnectionStatus('bg-yellow-500');
+            updateConnectionStatus('text-yellow-500');
         }
 
         function handleSocketDisconnect() {
-            updateConnectionStatus('bg-red-500');
+            updateConnectionStatus('text-red-500');
         }
 
         function handleConnected(data) {
-            updateConnectionStatus('bg-green-500');
+            updateConnectionStatus('text-green-500');
             
             socket.emit('register_user', {
                 location: userPosition ? [userPosition.lat, userPosition.lng] : [25.0338, 121.5645]
@@ -241,22 +237,22 @@
         }
 
         function handleRegistrationSuccess(data) {
-            console.log('註冊成功');
+            // No action needed
         }
 
         function handleInitialData(data) {
-            // 清除舊標記
+            // Clear old markers
             Object.values(crewMarkers).forEach(marker => map.removeLayer(marker));
             Object.values(userMarkers).forEach(marker => map.removeLayer(marker));
             crewMarkers = {};
             userMarkers = {};
             
-            // 添加其他跑者
+            // Add other runners
             Object.entries(data.users).forEach(([userId, user]) => {
                 addUserMarker(userId, user);
             });
             
-            // 添加工作人員
+            // Add crew
             Object.entries(data.crew).forEach(([crewId, crew]) => {
                 addCrewMarker(crewId, crew);
             });
@@ -287,40 +283,38 @@
                 fillOpacity: 0.6
             }).addTo(map);
             
-            marker.bindTooltip(user.name);
             userMarkers[userId] = marker;
         }
 
         function addCrewMarker(crewId, crew) {
-            let iconClass = 'crew-icon-walk';
-            let iconText = '👨‍⚕️';
+            let iconClass = 'crew-walk';
+            let iconText = 'W';
             
             if (crew.transport === 'bike') {
-                iconClass = 'crew-icon-bike';
-                iconText = '🚴';
+                iconClass = 'crew-bike';
+                iconText = 'B';
             }
             
             if (crew.first_aid) {
-                iconClass = 'crew-icon-firstaid';
-                iconText = '🩹';
+                iconClass = 'crew-aid';
+                iconText = 'A';
             }
             
             const marker = L.marker([crew.location[0], crew.location[1]], {
                 icon: L.divIcon({
-                    html: `<div class="w-8 h-8 rounded-full ${iconClass} flex items-center justify-center">${iconText}</div>`,
+                    html: `<div class="w-6 h-6 rounded-full ${iconClass} flex items-center justify-center text-xs">${iconText}</div>`,
                     className: 'custom-div-icon',
-                    iconSize: [32, 32]
+                    iconSize: [24, 24]
                 })
             }).addTo(map);
             
-            marker.bindTooltip(crew.name);
             crewMarkers[crewId] = marker;
         }
 
-        // 緊急功能
+        // Emergency functions
         function requestEmergency() {
             if (!userPosition) {
-                showMessage('請先取得位置');
+                showMessage('Need GPS first');
                 return;
             }
             
@@ -329,7 +323,7 @@
                 document.getElementById('emergencyBtn').classList.add('hidden');
                 document.getElementById('cancelEmergencyBtn').classList.remove('hidden');
                 updateRunnerMarker();
-                showMessage('已發出緊急求助');
+                showMessage('Emergency sent');
             });
         }
 
@@ -337,4 +331,74 @@
             if (!emergencyId) return;
             
             socket.emit('resolve_emergency', { emergency_id: emergencyId }, (response) => {
-                if (
+                emergencyId = null;
+                document.getElementById('emergencyBtn').classList.remove('hidden');
+                document.getElementById('cancelEmergencyBtn').classList.add('hidden');
+                updateRunnerMarker();
+                showMessage('Emergency cancelled');
+            });
+        }
+
+        function handleEmergencyAlert(data) {
+            // User doesn't see other emergencies
+        }
+
+        function handleEmergencyConfirmed(data) {
+            // Confirmation handled in requestEmergency
+        }
+
+        function handleEmergencyResolved(data) {
+            if (data.user_id === socket.id) {
+                emergencyId = null;
+                document.getElementById('emergencyBtn').classList.remove('hidden');
+                document.getElementById('cancelEmergencyBtn').classList.add('hidden');
+                updateRunnerMarker();
+            }
+        }
+
+        // Other handlers
+        function handleUserJoined(data) {
+            addUserMarker(data.sid, data);
+        }
+
+        function handleUserLeft(data) {
+            if (userMarkers[data.sid]) {
+                map.removeLayer(userMarkers[data.sid]);
+                delete userMarkers[data.sid];
+            }
+        }
+
+        function handleCrewJoined(data) {
+            addCrewMarker(data.sid, data);
+        }
+
+        function handleCrewLeft(data) {
+            if (crewMarkers[data.sid]) {
+                map.removeLayer(crewMarkers[data.sid]);
+                delete crewMarkers[data.sid];
+            }
+        }
+
+        // Utility functions
+        function updateConnectionStatus(color) {
+            const icon = document.querySelector('#connectionStatus i');
+            icon.className = `fas fa-wifi ${color}`;
+        }
+
+        function sendLocationUpdate() {
+            if (!userPosition || !socket || !socket.connected) return;
+            
+            socket.emit('user_location_update', {
+                lat: userPosition.lat,
+                lng: userPosition.lng,
+                emergency: emergencyId !== null
+            });
+        }
+
+        function showMessage(text) {
+            // Simple alert for now
+            console.log(text);
+        }
+    </script>
+</body>
+</html>
