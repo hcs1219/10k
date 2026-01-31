@@ -1,404 +1,613 @@
-<!DOCTYPE html>
-<html lang="en">
+l<!DOCTYPE html>
+<html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Race Tracker - Runner</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <title>10K 跑步賽事 - 跑手頁面</title>
     <style>
-        #map { height: 65vh; }
-        .runner-icon { background: #3B82F6; }
-        .crew-walk { background: #F97316; }
-        .crew-bike { background: #F59E0B; }
-        .crew-aid { background: #DC2626; color: white; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        /* Route Selection */
+        .route-selection {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 3px solid #e9ecef;
+        }
+        
+        .route-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .route-btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            background: white;
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 150px;
+            border: 3px solid transparent;
+        }
+        
+        .route-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .route-btn.active {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border-color: #fff;
+        }
+        
+        /* Map Container */
+        .map-container {
+            padding: 20px;
+            background: white;
+        }
+        
+        .map-wrapper {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: none;
+            display: block;
+        }
+        
+        /* Emergency Section */
+        .emergency-section {
+            padding: 20px;
+            background: #fff5f5;
+            border-radius: 15px;
+            margin-top: 20px;
+            border: 2px solid #ff6b6b;
+        }
+        
+        .emergency-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .emergency-icon {
+            font-size: 40px;
+            color: #ff6b6b;
+        }
+        
+        .emergency-header h2 {
+            color: #c92a2a;
+            font-size: 28px;
+        }
+        
+        .emergency-btn {
+            width: 100%;
+            padding: 25px;
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(255,107,107,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .emergency-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(255,107,107,0.4);
+        }
+        
+        .emergency-btn:active:not(:disabled) {
+            transform: translateY(-1px);
+        }
+        
+        .emergency-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: #cccccc;
+        }
+        
+        .emergency-btn.pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255,107,107,0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(255,107,107,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,107,107,0); }
+        }
+        
+        /* Quick Injury Buttons */
+        .injury-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .injury-btn {
+            padding: 12px;
+            background: white;
+            border: 2px solid #ff6b6b;
+            border-radius: 10px;
+            color: #ff6b6b;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .injury-btn:hover {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        /* Details Input */
+        .details-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 2px solid #ff6b6b;
+            border-radius: 10px;
+            font-size: 16px;
+            font-family: inherit;
+            margin-bottom: 15px;
+            resize: vertical;
+        }
+        
+        .details-input:focus {
+            outline: none;
+            border-color: #ff4757;
+            box-shadow: 0 0 0 3px rgba(255,107,107,0.1);
+        }
+        
+        /* GPS Status */
+        .gps-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #f1f3f5;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+        
+        .gps-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #40c057;
+        }
+        
+        .gps-indicator.active {
+            background: #40c057;
+            animation: blink 1.5s infinite;
+        }
+        
+        .gps-indicator.inactive {
+            background: #fa5252;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        /* Status Messages */
+        .status-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .status-message.success {
+            background: #d3f9d8;
+            color: #2b8a3e;
+            border: 2px solid #69db7c;
+        }
+        
+        .status-message.error {
+            background: #ffe3e3;
+            color: #c92a2a;
+            border: 2px solid #ff6b6b;
+        }
+        
+        .status-message.warning {
+            background: #fff3bf;
+            color: #e67700;
+            border: 2px solid #ffd43b;
+        }
+        
+        /* Help Text */
+        .help-text {
+            text-align: center;
+            color: #868e96;
+            font-size: 14px;
+            margin-top: 10px;
+            padding: 10px;
+        }
+        
+        /* Hidden Sections */
+        .hidden {
+            display: none;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .route-buttons {
+                flex-direction: column;
+            }
+            
+            .route-btn {
+                width: 100%;
+            }
+            
+            iframe {
+                height: 400px;
+            }
+            
+            .emergency-btn {
+                padding: 20px;
+                font-size: 20px;
+            }
+            
+            .injury-buttons {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .injury-buttons {
+                grid-template-columns: 1fr;
+            }
+            
+            iframe {
+                height: 300px;
+            }
+        }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-2">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-2">
-            <h1 class="text-lg font-bold text-gray-900">Race Tracker</h1>
-            <div class="flex items-center">
-                <span id="connectionStatus" class="px-2 py-1">
-                    <i class="fas fa-wifi text-gray-500"></i>
-                </span>
-            </div>
-        </div>
-
+<body>
+    <div class="container">
         <!-- Route Selection -->
-        <div class="mb-2">
-            <div class="flex space-x-1">
-                <button onclick="selectRoute('route_2k')" id="route_2k" 
-                        class="flex-1 py-1 bg-blue-500 text-white rounded text-sm">
-                    2km
-                </button>
-                <button onclick="selectRoute('route_5k')" id="route_5k" 
-                        class="flex-1 py-1 bg-green-500 text-white rounded text-sm">
-                    5km
-                </button>
-                <button onclick="selectRoute('route_10k')" id="route_10k" 
-                        class="flex-1 py-1 bg-purple-500 text-white rounded text-sm">
-                    10km
-                </button>
+        <div class="route-selection">
+            <div class="route-buttons">
+                <button class="route-btn active" data-route="10k">10K 路線</button>
+                <button class="route-btn" data-route="5k">5K 路線</button>
+                <button class="route-btn" data-route="2k">2K 路線</button>
             </div>
         </div>
-
-        <!-- Emergency Button -->
-        <div class="mb-2">
-            <button id="emergencyBtn" onclick="requestEmergency()" 
-                    class="w-full py-2 bg-red-500 text-white font-bold rounded">
-                EMERGENCY
-            </button>
-            <button id="cancelEmergencyBtn" onclick="cancelEmergency()" 
-                    class="hidden w-full py-2 bg-green-500 text-white font-bold rounded mt-1">
-                CANCEL
-            </button>
+        
+        <!-- Map Container -->
+        <div class="map-container">
+            <div class="map-wrapper">
+                <!-- Google Maps Embed -->
+                <iframe 
+                    src="https://www.google.com/maps/d/embed?mid=1_r48CrjO3UAWiZz2xNHBxHgXGbekc-0&ehbc=2E312F&noprof=1"
+                    allowfullscreen>
+                </iframe>
+            </div>
+            
+            <!-- GPS Status -->
+            <div class="gps-status">
+                <div class="gps-indicator active" id="gpsIndicator"></div>
+                <span id="gpsText">正在獲取位置...</span>
+                <span id="coordinates" style="margin-left: auto; font-family: monospace;"></span>
+            </div>
+            
+            <!-- Status Messages -->
+            <div class="status-message hidden" id="statusMessage"></div>
         </div>
-
-        <!-- Map -->
-        <div id="map" class="rounded border border-gray-300"></div>
-
-        <!-- Location -->
-        <div class="mt-2 p-2 bg-white rounded border border-gray-200">
-            <div class="text-xs text-gray-600">Your Location</div>
-            <div id="currentLocation" class="font-mono text-xs">Getting location...</div>
+        
+        <!-- Emergency Section -->
+        <div class="emergency-section">
+            <div class="emergency-header">
+                <div class="emergency-icon">🚨</div>
+                <h2>緊急求助</h2>
+            </div>
+            
+            <button class="emergency-btn pulse" id="emergencyBtn">
+                🆘 緊急求助
+            </button>
+            
+            <!-- Quick Injury Buttons -->
+            <div class="injury-buttons" id="injuryButtons">
+                <button class="injury-btn" data-injury="擦傷">擦傷</button>
+                <button class="injury-btn" data-injury="扭傷">扭傷</button>
+                <button class="injury-btn" data-injury="骨折">骨折</button>
+                <button class="injury-btn" data-injury="昏迷">昏迷</button>
+                <button class="injury-btn" data-injury="頭暈">頭暈</button>
+                <button class="injury-btn" data-injury="嘔吐">嘔吐</button>
+                <button class="injury-btn" data-injury="抽筋">抽筋</button>
+                <button class="injury-btn" data-injury="呼吸困難">呼吸困難</button>
+            </div>
+            
+            <!-- Details Input -->
+            <textarea 
+                class="details-input" 
+                id="emergencyDetails" 
+                placeholder="請描述詳細情況（可選）..."
+                maxlength="500"></textarea>
+            
+            <!-- Help Text -->
+            <div class="help-text">
+                💡 提示：點擊上方按鈕快速描述傷勢，或在下方的文本框中提供更多信息
+            </div>
         </div>
     </div>
 
     <script>
-        // Variables
-        let socket = null;
-        let map = null;
-        let runnerMarker = null;
-        let crewMarkers = {};
-        let userMarkers = {};
-        let currentRoute = 'route_2k';
-        let userPosition = null;
-        let emergencyId = null;
-
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            initMap();
-            initWebSocket();
-            startLocationTracking();
+        // DOM Elements
+        const routeButtons = document.querySelectorAll('.route-btn');
+        const emergencyBtn = document.getElementById('emergencyBtn');
+        const injuryButtons = document.querySelectorAll('.injury-btn');
+        const emergencyDetails = document.getElementById('emergencyDetails');
+        const gpsIndicator = document.getElementById('gpsIndicator');
+        const gpsText = document.getElementById('gpsText');
+        const coordinatesSpan = document.getElementById('coordinates');
+        const statusMessage = document.getElementById('statusMessage');
+        
+        // State
+        let currentLocation = null;
+        let emergencySent = false;
+        let emergencyTimer = null;
+        
+        // Route Selection
+        routeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                routeButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                const route = btn.dataset.route;
+                console.log(`切換到 ${route} 路線`);
+                
+                // In a real app, you would update the map here
+                // For now, just show a message
+                showStatus(`已切換到 ${route} 路線`, 'success');
+            });
         });
-
-        // Initialize map
-        function initMap() {
-            map = L.map('map').setView([25.0338, 121.5645], 15);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
-            
-            loadRoutes();
-        }
-
-        // Load routes
-        async function loadRoutes() {
-            try {
-                const response = await fetch('/api/routes');
-                window.routes = await response.json();
-                selectRoute('route_2k');
-            } catch (error) {
-                console.error('Failed to load routes:', error);
-            }
-        }
-
-        // Select route
-        function selectRoute(routeId) {
-            currentRoute = routeId;
-            
-            // Update buttons
-            document.querySelectorAll('button').forEach(btn => {
-                btn.classList.remove('ring-1', 'ring-white');
-            });
-            event.target.classList.add('ring-1', 'ring-white');
-            
-            // Show route
-            if (window.routeLayer) {
-                map.removeLayer(window.routeLayer);
-            }
-            
-            const route = window.routes[routeId];
-            if (route && route.path) {
-                window.routeLayer = L.polyline(route.path, {
-                    color: route.color,
-                    weight: 3
-                }).addTo(map);
-                map.fitBounds(window.routeLayer.getBounds());
-            }
-        }
-
-        // Location tracking
-        function startLocationTracking() {
+        
+        // Get GPS Location
+        function getLocation() {
             if (!navigator.geolocation) {
-                showMessage('GPS not supported');
+                gpsText.textContent = '瀏覽器不支持地理位置';
+                gpsIndicator.classList.remove('active');
+                gpsIndicator.classList.add('inactive');
                 return;
             }
             
-            navigator.geolocation.watchPosition(
-                handlePositionUpdate,
-                handlePositionError,
-                { enableHighAccuracy: true }
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    currentLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    };
+                    
+                    gpsText.textContent = '位置已獲取';
+                    gpsIndicator.classList.add('active');
+                    gpsIndicator.classList.remove('inactive');
+                    
+                    // Display coordinates (optional - can be removed)
+                    coordinatesSpan.textContent = 
+                        `${currentLocation.lat.toFixed(6)}, ${currentLocation.lng.toFixed(6)}`;
+                    
+                    console.log('位置獲取成功:', currentLocation);
+                },
+                (error) => {
+                    console.error('位置獲取失敗:', error);
+                    gpsText.textContent = '無法獲取位置';
+                    gpsIndicator.classList.remove('active');
+                    gpsIndicator.classList.add('inactive');
+                    
+                    // Fallback to default location (Tai Wai)
+                    currentLocation = {
+                        lat: 22.3753788,
+                        lng: 114.1800749,
+                        accuracy: 1000
+                    };
+                    
+                    showStatus('無法獲取精確位置，使用預設位置', 'warning');
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
             );
-            
-            setInterval(sendLocationUpdate, 10000);
         }
-
-        function handlePositionUpdate(position) {
-            userPosition = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude
-            };
-            
-            updateLocationDisplay();
-            updateRunnerMarker();
-            sendLocationUpdate();
-        }
-
-        function handlePositionError(error) {
-            console.error('GPS error:', error);
-            showMessage('GPS error');
-        }
-
-        function updateLocationDisplay() {
-            if (userPosition) {
-                document.getElementById('currentLocation').textContent = 
-                    `${userPosition.lat.toFixed(6)}, ${userPosition.lng.toFixed(6)}`;
-            }
-        }
-
-        function updateRunnerMarker() {
-            if (!userPosition) return;
-            
-            if (!runnerMarker) {
-                runnerMarker = L.circleMarker([userPosition.lat, userPosition.lng], {
-                    radius: 8,
-                    fillColor: emergencyId ? '#EF4444' : '#3B82F6',
-                    color: '#1D4ED8',
-                    weight: 2,
-                    fillOpacity: 0.8
-                }).addTo(map);
-            } else {
-                runnerMarker.setLatLng([userPosition.lat, userPosition.lng]);
-                runnerMarker.setStyle({
-                    fillColor: emergencyId ? '#EF4444' : '#3B82F6'
-                });
-            }
-        }
-
-        // WebSocket
-        function initWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            const socketUrl = `${protocol}//${host}`;
-            
-            socket = io(socketUrl, {
-                transports: ['websocket', 'polling'],
-                reconnection: true
+        
+        // Update location every 30 seconds
+        getLocation();
+        setInterval(getLocation, 30000);
+        
+        // Quick Injury Buttons
+        injuryButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const injury = btn.dataset.injury;
+                emergencyDetails.value = `傷勢：${injury}\n${emergencyDetails.value}`;
+                showStatus(`已添加傷勢描述：${injury}`, 'success');
+                
+                // Highlight button temporarily
+                btn.style.background = '#ff6b6b';
+                btn.style.color = 'white';
+                setTimeout(() => {
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 1000);
             });
-            
-            // Event handlers
-            socket.on('connect', handleSocketConnect);
-            socket.on('disconnect', handleSocketDisconnect);
-            socket.on('connected', handleConnected);
-            socket.on('registration_success', handleRegistrationSuccess);
-            socket.on('initial_data', handleInitialData);
-            socket.on('user_location_updated', handleUserLocationUpdated);
-            socket.on('crew_location_updated', handleCrewLocationUpdated);
-            socket.on('user_joined', handleUserJoined);
-            socket.on('user_left', handleUserLeft);
-            socket.on('crew_joined', handleCrewJoined);
-            socket.on('crew_left', handleCrewLeft);
-            socket.on('emergency_alert', handleEmergencyAlert);
-            socket.on('emergency_confirmed', handleEmergencyConfirmed);
-            socket.on('emergency_resolved', handleEmergencyResolved);
-        }
-
-        function handleSocketConnect() {
-            updateConnectionStatus('text-yellow-500');
-        }
-
-        function handleSocketDisconnect() {
-            updateConnectionStatus('text-red-500');
-        }
-
-        function handleConnected(data) {
-            updateConnectionStatus('text-green-500');
-            
-            socket.emit('register_user', {
-                location: userPosition ? [userPosition.lat, userPosition.lng] : [25.0338, 121.5645]
-            });
-            
-            socket.emit('get_initial_data');
-        }
-
-        function handleRegistrationSuccess(data) {
-            // No action needed
-        }
-
-        function handleInitialData(data) {
-            // Clear old markers
-            Object.values(crewMarkers).forEach(marker => map.removeLayer(marker));
-            Object.values(userMarkers).forEach(marker => map.removeLayer(marker));
-            crewMarkers = {};
-            userMarkers = {};
-            
-            // Add other runners
-            Object.entries(data.users).forEach(([userId, user]) => {
-                addUserMarker(userId, user);
-            });
-            
-            // Add crew
-            Object.entries(data.crew).forEach(([crewId, crew]) => {
-                addCrewMarker(crewId, crew);
-            });
-        }
-
-        function handleUserLocationUpdated(data) {
-            if (userMarkers[data.sid]) {
-                userMarkers[data.sid].setLatLng([data.location[0], data.location[1]]);
-            } else {
-                addUserMarker(data.sid, data);
-            }
-        }
-
-        function handleCrewLocationUpdated(data) {
-            if (crewMarkers[data.sid]) {
-                crewMarkers[data.sid].setLatLng([data.location[0], data.location[1]]);
-            } else {
-                addCrewMarker(data.sid, data);
-            }
-        }
-
-        function addUserMarker(userId, user) {
-            const marker = L.circleMarker([user.location[0], user.location[1]], {
-                radius: 6,
-                fillColor: '#3B82F6',
-                color: '#1D4ED8',
-                weight: 1,
-                fillOpacity: 0.6
-            }).addTo(map);
-            
-            userMarkers[userId] = marker;
-        }
-
-        function addCrewMarker(crewId, crew) {
-            let iconClass = 'crew-walk';
-            let iconText = 'W';
-            
-            if (crew.transport === 'bike') {
-                iconClass = 'crew-bike';
-                iconText = 'B';
-            }
-            
-            if (crew.first_aid) {
-                iconClass = 'crew-aid';
-                iconText = 'A';
-            }
-            
-            const marker = L.marker([crew.location[0], crew.location[1]], {
-                icon: L.divIcon({
-                    html: `<div class="w-6 h-6 rounded-full ${iconClass} flex items-center justify-center text-xs">${iconText}</div>`,
-                    className: 'custom-div-icon',
-                    iconSize: [24, 24]
-                })
-            }).addTo(map);
-            
-            crewMarkers[crewId] = marker;
-        }
-
-        // Emergency functions
-        function requestEmergency() {
-            if (!userPosition) {
-                showMessage('Need GPS first');
+        });
+        
+        // Emergency Button
+        emergencyBtn.addEventListener('click', () => {
+            if (emergencySent) {
+                showStatus('求助信號已發送，工作人員正在處理中...', 'warning');
                 return;
             }
             
-            socket.emit('emergency_request', {}, (response) => {
-                emergencyId = response.emergency_id;
-                document.getElementById('emergencyBtn').classList.add('hidden');
-                document.getElementById('cancelEmergencyBtn').classList.remove('hidden');
-                updateRunnerMarker();
-                showMessage('Emergency sent');
-            });
-        }
-
-        function cancelEmergency() {
-            if (!emergencyId) return;
+            if (!currentLocation) {
+                showStatus('無法獲取位置，請稍後再試', 'error');
+                return;
+            }
             
-            socket.emit('resolve_emergency', { emergency_id: emergencyId }, (response) => {
-                emergencyId = null;
-                document.getElementById('emergencyBtn').classList.remove('hidden');
-                document.getElementById('cancelEmergencyBtn').classList.add('hidden');
-                updateRunnerMarker();
-                showMessage('Emergency cancelled');
-            });
-        }
-
-        function handleEmergencyAlert(data) {
-            // User doesn't see other emergencies
-        }
-
-        function handleEmergencyConfirmed(data) {
-            // Confirmation handled in requestEmergency
-        }
-
-        function handleEmergencyResolved(data) {
-            if (data.user_id === socket.id) {
-                emergencyId = null;
-                document.getElementById('emergencyBtn').classList.remove('hidden');
-                document.getElementById('cancelEmergencyBtn').classList.add('hidden');
-                updateRunnerMarker();
-            }
-        }
-
-        // Other handlers
-        function handleUserJoined(data) {
-            addUserMarker(data.sid, data);
-        }
-
-        function handleUserLeft(data) {
-            if (userMarkers[data.sid]) {
-                map.removeLayer(userMarkers[data.sid]);
-                delete userMarkers[data.sid];
-            }
-        }
-
-        function handleCrewJoined(data) {
-            addCrewMarker(data.sid, data);
-        }
-
-        function handleCrewLeft(data) {
-            if (crewMarkers[data.sid]) {
-                map.removeLayer(crewMarkers[data.sid]);
-                delete crewMarkers[data.sid];
-            }
-        }
-
-        // Utility functions
-        function updateConnectionStatus(color) {
-            const icon = document.querySelector('#connectionStatus i');
-            icon.className = `fas fa-wifi ${color}`;
-        }
-
-        function sendLocationUpdate() {
-            if (!userPosition || !socket || !socket.connected) return;
+            // Get user details
+            const details = emergencyDetails.value.trim() || '未提供詳細情況';
             
-            socket.emit('user_location_update', {
-                lat: userPosition.lat,
-                lng: userPosition.lng,
-                emergency: emergencyId !== null
-            });
+            // Show confirmation
+            if (!confirm('確定要發送緊急求助信號嗎？工作人員將會收到您的位置和求助信息。')) {
+                return;
+            }
+            
+            // Send emergency signal (simulated)
+            sendEmergencySignal(details);
+        });
+        
+        // Simulate sending emergency signal
+        function sendEmergencySignal(details) {
+            emergencyBtn.disabled = true;
+            emergencyBtn.textContent = '🆘 求助已發送...';
+            emergencyBtn.classList.remove('pulse');
+            
+            showStatus('正在發送求助信號...', 'warning');
+            
+            // Simulate API call
+            setTimeout(() => {
+                emergencySent = true;
+                
+                // Store emergency in localStorage (simulating backend)
+                const emergencyData = {
+                    id: Date.now(),
+                    location: currentLocation,
+                    details: details,
+                    timestamp: new Date().toISOString(),
+                    status: 'pending'
+                };
+                
+                localStorage.setItem('lastEmergency', JSON.stringify(emergencyData));
+                
+                // Update UI
+                emergencyBtn.textContent = '🆘 已發送求助信號';
+                showStatus('✅ 求助信號已發送！工作人員將很快到達您的位置。', 'success');
+                
+                // Show countdown for reset
+                let countdown = 60;
+                emergencyTimer = setInterval(() => {
+                    emergencyBtn.textContent = `🆘 已發送 (${countdown}秒後可重新發送)`;
+                    countdown--;
+                    
+                    if (countdown <= 0) {
+                        clearInterval(emergencyTimer);
+                        resetEmergencyButton();
+                    }
+                }, 1000);
+                
+                // Notify crew page (simulated)
+                notifyCrew(emergencyData);
+                
+                console.log('Emergency sent:', emergencyData);
+            }, 2000);
         }
-
-        function showMessage(text) {
-            // Simple alert for now
-            console.log(text);
+        
+        function resetEmergencyButton() {
+            emergencyBtn.disabled = false;
+            emergencyBtn.textContent = '🆘 緊急求助';
+            emergencyBtn.classList.add('pulse');
+            emergencySent = false;
+            emergencyDetails.value = '';
+            showStatus('求助按鈕已重置', 'success');
         }
+        
+        function notifyCrew(data) {
+            // In a real app, this would be a WebSocket or server push
+            // For demo, we'll just update localStorage
+            const emergencies = JSON.parse(localStorage.getItem('activeEmergencies') || '[]');
+            emergencies.push(data);
+            localStorage.setItem('activeEmergencies', JSON.stringify(emergencies));
+            
+            // Trigger storage event for crew page
+            window.dispatchEvent(new StorageEvent('storage', {
+                key: 'activeEmergencies',
+                newValue: JSON.stringify(emergencies)
+            }));
+        }
+        
+        function showStatus(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message ${type}`;
+            statusMessage.classList.remove('hidden');
+            
+            setTimeout(() => {
+                statusMessage.classList.add('hidden');
+            }, 5000);
+        }
+        
+        // Check for previous emergency on load
+        window.addEventListener('load', () => {
+            const lastEmergency = localStorage.getItem('lastEmergency');
+            if (lastEmergency) {
+                const data = JSON.parse(lastEmergency);
+                const elapsed = Date.now() - data.id;
+                
+                if (elapsed < 60000) { // Less than 1 minute ago
+                    emergencySent = true;
+                    emergencyBtn.disabled = true;
+                    emergencyBtn.classList.remove('pulse');
+                    
+                    let remaining = Math.ceil((60000 - elapsed) / 1000);
+                    emergencyBtn.textContent = `🆘 已發送求助 (${remaining}秒後可重新發送)`;
+                    
+                    emergencyTimer = setInterval(() => {
+                        remaining--;
+                        emergencyBtn.textContent = `🆘 已發送求助 (${remaining}秒後可重新發送)`;
+                        
+                        if (remaining <= 0) {
+                            clearInterval(emergencyTimer);
+                            resetEmergencyButton();
+                        }
+                    }, 1000);
+                }
+            }
+        });
     </script>
 </body>
 </html>
