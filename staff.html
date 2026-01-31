@@ -2,357 +2,1825 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Race Tracker - Staff View</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>👨‍⚕️ Race Tracker - Staff Dashboard</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'emergency-red': '#EF4444',
+                        'staff-orange': '#F97316',
+                        'staff-bike': '#F59E0B',
+                        'first-aid': '#DC2626',
+                        'runner-blue': '#3B82F6',
+                        'route-green': '#10B981',
+                        'route-purple': '#8B5CF6'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Socket.io -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js for statistics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <style>
-        #map { height: calc(100vh - 220px); }
-        .user-icon { background-color: #3B82F6; }
-        .emergency-user { background-color: #EF4444; animation: pulse 1.5s infinite; }
-        .staff-icon-walk { background-color: #F97316; }
-        .staff-icon-bike { background-color: #F59E0B; }
-        .staff-icon-firstaid { background-color: #DC2626; color: white; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+        
+        #map {
+            height: 55vh;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .pulse-emergency {
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        
+        .status-connected {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        }
+        
+        .status-disconnected {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+        }
+        
+        .staff-marker-walk {
+            background: #F97316;
+            border: 3px solid #EA580C;
+            color: white;
+        }
+        
+        .staff-marker-bike {
+            background: #F59E0B;
+            border: 3px solid #D97706;
+            color: white;
+        }
+        
+        .staff-marker-firstaid {
+            background: #DC2626;
+            border: 3px solid #B91C1C;
+            color: white;
+        }
+        
+        .runner-marker {
+            background: #3B82F6;
+            border: 3px solid #1D4ED8;
+            color: white;
+        }
+        
+        .emergency-marker {
+            background: #EF4444;
+            border: 3px solid #DC2626;
+            color: white;
+        }
+        
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 8px;
+        }
+        
+        .notification-slide {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            #map {
+                height: 45vh;
+            }
+            
+            .mobile-stack {
+                flex-direction: column;
+            }
+            
+            .mobile-full {
+                width: 100% !important;
+            }
+        }
+        
+        /* Smooth transitions */
+        .transition-all {
+            transition: all 0.3s ease;
+        }
+        
+        /* Scrollbar styling */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        /* Loading skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-2">
+<body class="bg-gray-50 text-gray-800">
+    <div class="min-h-screen pb-24">
         <!-- Header -->
-        <div class="flex justify-between items-center mb-3">
-            <h1 class="text-2xl font-bold text-orange-700">Staff Dashboard</h1>
-            <div class="flex items-center space-x-2">
-                <span id="status" class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm">Connected</span>
-                <button onclick="window.location.href='/'" class="px-3 py-1 bg-gray-200 rounded-lg text-sm">
-                    Runner View
-                </button>
+        <div class="bg-gradient-to-r from-orange-500 to-orange-600 shadow-lg sticky top-0 z-50">
+            <div class="container mx-auto px-4 py-3">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                            <i class="fas fa-user-shield text-white text-xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-white">Staff Dashboard</h1>
+                            <div class="flex items-center space-x-2">
+                                <span id="connectionStatus" class="status-connected text-white text-xs px-2 py-1 rounded-full">
+                                    <i class="fas fa-wifi mr-1"></i> Connecting...
+                                </span>
+                                <span id="runnerCount" class="text-xs text-white/90">
+                                    <i class="fas fa-running mr-1"></i> 0
+                                </span>
+                                <span id="staffCount" class="text-xs text-white/90">
+                                    <i class="fas fa-user-shield mr-1"></i> 0
+                                </span>
+                                <span id="emergencyCount" class="text-xs bg-white/20 px-2 py-0.5 rounded-full text-white">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i> 0
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-2">
+                        <button onclick="window.location.href='/'" 
+                                class="px-3 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-lg transition-all flex items-center backdrop-blur-sm">
+                            <i class="fas fa-running mr-2"></i> Runner View
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Staff Controls -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-            <!-- Location Sharing Toggle -->
-            <div class="bg-white p-3 rounded-lg border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-gray-700">Share Location</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="shareLocation" checked class="sr-only peer">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
+        <div class="container mx-auto px-4 py-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <!-- Location Sharing -->
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                <i class="fas fa-location-dot text-blue-600"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-gray-800">Location Sharing</h3>
+                                <p class="text-xs text-gray-500">Share your position</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="shareLocationToggle" checked class="sr-only peer">
+                            <div class="w-12 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2" id="locationStatus">Your location is visible to runners</p>
+                </div>
+
+                <!-- Transportation Mode -->
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <h3 class="font-semibold text-gray-800 mb-2">Transportation</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="setTransportMode('walk')" id="walkBtn" 
+                                class="transport-btn flex-1 py-2 bg-orange-500 text-white font-medium rounded-lg transition-all">
+                            <i class="fas fa-walking mr-2"></i> Walk
+                        </button>
+                        <button onclick="setTransportMode('bike')" id="bikeBtn" 
+                                class="transport-btn flex-1 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium rounded-lg transition-all">
+                            <i class="fas fa-bicycle mr-2"></i> Bike
+                        </button>
+                    </div>
+                </div>
+
+                <!-- First Aid Kit -->
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center">
+                            <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center mr-3">
+                                <i class="fas fa-first-aid text-red-600"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-gray-800">First Aid Kit</h3>
+                                <p class="text-xs text-gray-500">Carrying medical supplies</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="firstAidToggle" class="sr-only peer">
+                            <div class="w-12 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2" id="firstAidStatus">No first aid kit</p>
+                </div>
+
+                <!-- Status Update -->
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <h3 class="font-semibold text-gray-800 mb-2">Status</h3>
+                    <select id="statusSelect" class="w-full border border-gray-300 rounded-lg p-2 mb-3">
+                        <option value="available">🟢 Available</option>
+                        <option value="busy">🟡 Busy</option>
+                        <option value="responding">🔴 Responding</option>
+                        <option value="off-duty">⚫ Off Duty</option>
+                    </select>
+                    <button onclick="updateStaffStatus()" 
+                            class="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-all">
+                        <i class="fas fa-sync-alt mr-2"></i> Update Status
+                    </button>
                 </div>
             </div>
 
-            <!-- Transportation Mode -->
-            <div class="bg-white p-3 rounded-lg border border-gray-200">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Transport</label>
-                <select id="transportMode" class="w-full text-sm border-gray-300 rounded-lg">
-                    <option value="walk">🚶 Walk</option>
-                    <option value="bike">🚴 Bike</option>
-                </select>
-            </div>
-
-            <!-- First Aid Toggle -->
-            <div class="bg-white p-3 rounded-lg border border-gray-200">
-                <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-gray-700">First Aid Kit</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="firstAid" class="sr-only peer">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                    </label>
+            <!-- Emergency Alerts Panel -->
+            <div id="emergencyPanel" class="hidden mb-4">
+                <div class="bg-red-50 border-2 border-red-200 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-bold text-red-700">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>
+                            Active Emergencies
+                        </h2>
+                        <span id="activeEmergencyCount" class="bg-red-500 text-white px-3 py-1 rounded-full font-bold">0</span>
+                    </div>
+                    <div id="emergencyList" class="space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
+                        <!-- Emergency cards will be added here -->
+                    </div>
                 </div>
             </div>
 
-            <!-- Update Button -->
-            <div class="bg-white p-3 rounded-lg border border-gray-200 flex items-center">
-                <button onclick="updateStaffStatus()" class="w-full py-2 px-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg text-sm">
-                    Update Status
-                </button>
+            <!-- Map Container -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold text-gray-800">Live Tracking Map</h2>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="centerOnMyLocation()" 
+                                class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-all">
+                            <i class="fas fa-location-crosshairs mr-1"></i> My Location
+                        </button>
+                        <button onclick="toggleLegend()" 
+                                class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg transition-all">
+                            <i class="fas fa-layer-group"></i>
+                        </button>
+                        <button onclick="fitAllMarkers()" 
+                                class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg transition-all">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="map" class="w-full"></div>
+                
+                <!-- Legend -->
+                <div id="mapLegend" class="mt-3 bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full runner-marker mr-2"></div>
+                            <span class="text-sm">Runner</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full staff-marker-walk mr-2"></div>
+                            <span class="text-sm">Staff (Walk)</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full staff-marker-bike mr-2"></div>
+                            <span class="text-sm">Staff (Bike)</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full staff-marker-firstaid mr-2"></div>
+                            <span class="text-sm">First Aid</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full emergency-marker mr-2 pulse-emergency"></div>
+                            <span class="text-sm">Emergency</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Dashboard -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                            <i class="fas fa-running text-blue-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900" id="totalRunners">0</div>
+                            <div class="text-sm text-gray-600">Active Runners</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500" id="runnerStatus">All runners safe</div>
+                </div>
+                
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mr-3">
+                            <i class="fas fa-user-shield text-orange-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900" id="totalStaff">0</div>
+                            <div class="text-sm text-gray-600">Staff Online</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500" id="staffStatus">0 with first aid</div>
+                </div>
+                
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mr-3">
+                            <i class="fas fa-route text-green-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900" id="activeRoutes">3</div>
+                            <div class="text-sm text-gray-600">Active Routes</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500">Coastal, Park, City</div>
+                </div>
+                
+                <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mr-3">
+                            <i class="fas fa-clock text-red-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900" id="avgResponse">--</div>
+                            <div class="text-sm text-gray-600">Avg Response Time</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-gray-500" id="responseStatus">No emergencies today</div>
+                </div>
+            </div>
+
+            <!-- Runners List -->
+            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm mb-4">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-semibold text-gray-800">Runners Overview</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="filterRunners('all')" id="filterAll" 
+                                class="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg transition-all">
+                            All
+                        </button>
+                        <button onclick="filterRunners('emergency')" id="filterEmergency" 
+                                class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg transition-all">
+                            Emergencies
+                        </button>
+                        <button onclick="filterRunners('nearby')" id="filterNearby" 
+                                class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg transition-all">
+                            Nearby
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="runnersList" class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                    <!-- Runner cards will be added here -->
+                    <div class="text-center py-8 text-gray-400">
+                        <i class="fas fa-running text-4xl mb-2"></i>
+                        <p>No runners connected yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staff List -->
+            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                <h3 class="font-semibold text-gray-800 mb-3">Staff Overview</h3>
+                <div id="staffList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <!-- Staff cards will be added here -->
+                    <div class="text-center py-8 text-gray-400 col-span-full">
+                        <i class="fas fa-user-shield text-4xl mb-2"></i>
+                        <p>No other staff connected</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Emergency Alerts -->
-        <div id="emergencyAlerts" class="mb-3 space-y-2">
-            <!-- Emergency alerts will appear here -->
+        <!-- Notification Panel -->
+        <div id="notificationContainer" class="fixed bottom-4 right-4 z-50 space-y-2 max-w-md"></div>
+
+        <!-- Emergency Response Modal -->
+        <div id="responseModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl max-w-md w-full p-6">
+                <div class="text-center mb-4">
+                    <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-ambulance text-red-600 text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900" id="modalTitle">Respond to Emergency</h3>
+                    <p class="text-gray-600 mt-2" id="modalDescription"></p>
+                </div>
+                
+                <div class="space-y-3">
+                    <div class="bg-gray-50 p-3 rounded-lg">
+                        <div class="text-sm text-gray-500">Runner Details</div>
+                        <div class="font-medium" id="modalRunnerName">Unknown Runner</div>
+                        <div class="text-sm text-gray-600" id="modalDistance">Distance: calculating...</div>
+                        <div class="text-sm text-gray-600" id="modalTime">Reported: just now</div>
+                    </div>
+                    
+                    <div class="bg-blue-50 p-3 rounded-lg">
+                        <div class="text-sm text-gray-500">Your Response</div>
+                        <div class="font-medium" id="modalYourTransport">Transport: Walk</div>
+                        <div class="text-sm text-gray-600" id="modalYourFirstAid">First Aid: No</div>
+                        <div class="text-sm text-gray-600" id="modalETA">ETA: calculating...</div>
+                    </div>
+                    
+                    <div class="flex space-x-3 pt-2">
+                        <button onclick="closeResponseModal()" 
+                                class="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-all">
+                            Cancel
+                        </button>
+                        <button onclick="confirmEmergencyResponse()" 
+                                class="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-all">
+                            <i class="fas fa-first-aid mr-2"></i> I'm Responding
+                        </button>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button onclick="callRunner()" 
+                                class="text-sm text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-phone mr-1"></i> Call Runner (if number available)
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <!-- Map Container -->
-        <div id="map" class="rounded-xl border-2 border-gray-300 shadow-lg mb-3"></div>
-
-        <!-- Legend -->
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-            <div class="flex items-center">
-                <div class="w-4 h-4 rounded-full bg-blue-500 mr-2"></div>
-                <span class="text-sm">Runners</span>
-            </div>
-            <div class="flex items-center">
-                <div class="w-4 h-4 rounded-full bg-orange-500 mr-2"></div>
-                <span class="text-sm">Staff (Walk)</span>
-            </div>
-            <div class="flex items-center">
-                <div class="w-4 h-4 rounded-full bg-amber-500 mr-2"></div>
-                <span class="text-sm">Staff (Bike)</span>
-            </div>
-            <div class="flex items-center">
-                <div class="w-4 h-4 rounded-full bg-red-500 mr-2"></div>
-                <span class="text-sm">First Aid</span>
-            </div>
-            <div class="flex items-center">
-                <div class="w-4 h-4 rounded-full bg-red-500 mr-2 animate-pulse"></div>
-                <span class="text-sm">Emergency</span>
-            </div>
-        </div>
+        <!-- Audio for notifications -->
+        <audio id="emergencySound" preload="auto">
+            <source src="https://assets.mixkit.co/sfx/preview/mixkit-emergency-alert-sound-2907.mp3" type="audio/mpeg">
+        </audio>
+        <audio id="notificationSound" preload="auto">
+            <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+        </audio>
     </div>
 
     <script>
-        // Initialize variables
-        let socket = io();
+        // ========== GLOBAL VARIABLES ==========
+        let socket = null;
         let map = null;
         let staffMarker = null;
-        let userMarkers = {};
+        let runnerMarkers = {};
         let staffMarkers = {};
-        let watchId = null;
+        let emergencyMarkers = {};
         let staffPosition = null;
+        let watchId = null;
+        let staffData = {
+            name: `Staff-${Math.floor(Math.random() * 1000)}`,
+            transport: 'walk',
+            first_aid: false,
+            share_location: true,
+            status: 'available',
+            battery: 100
+        };
+        let runners = {};
+        let allStaff = {};
+        let activeEmergencies = {};
+        let currentEmergency = null;
+        let selectedEmergencyId = null;
 
-        // Initialize map
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Request notification permission
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+            
+            // Initialize map
+            initMap();
+            
+            // Initialize WebSocket connection
+            initWebSocket();
+            
+            // Start location tracking
+            startLocationTracking();
+            
+            // Set up event listeners for controls
+            setupEventListeners();
+            
+            // Update UI periodically
+            setInterval(updateDashboardStats, 5000);
+        });
+
+        // ========== MAP FUNCTIONS ==========
         function initMap() {
-            map = L.map('map').setView([1.3521, 103.8198], 15);
+            map = L.map('map', {
+                zoomControl: true,
+                dragging: true,
+                tap: true,
+                touchZoom: true,
+                scrollWheelZoom: true,
+                doubleClickZoom: true,
+                boxZoom: true,
+                keyboard: true
+            }).setView([1.3521, 103.8198], 15);
+            
+            // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
             }).addTo(map);
             
-            startLocationTracking();
-            socket.emit('get_all_data');
+            // Add scale control
+            L.control.scale({imperial: false}).addTo(map);
         }
 
-        // Start tracking staff location
-        function startLocationTracking() {
-            if (navigator.geolocation) {
-                watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        staffPosition = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        };
-                        
-                        updateStaffLocation();
-                        
-                        if (!staffMarker) {
-                            createStaffMarker();
-                        } else {
-                            staffMarker.setLatLng([staffPosition.lat, staffPosition.lng]);
-                        }
-                        
-                        if (!map.getBounds().contains(staffMarker.getLatLng())) {
-                            map.panTo([staffPosition.lat, staffPosition.lng]);
-                        }
-                    },
-                    (error) => {
-                        console.error('Geolocation error:', error);
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        maximumAge: 10000,
-                        timeout: 5000
-                    }
-                );
-            }
-        }
-
-        // Create staff marker
-        function createStaffMarker() {
-            const transport = document.getElementById('transportMode').value;
-            const firstAid = document.getElementById('firstAid').checked;
+        function updateStaffMarker() {
+            if (!staffPosition) return;
             
-            let iconClass = 'staff-icon-walk';
-            let iconText = '👨‍⚕️';
+            let markerClass = 'staff-marker-walk';
+            let icon = '👨‍⚕️';
             
-            if (transport === 'bike') {
-                iconClass = 'staff-icon-bike';
-                iconText = '🚴';
+            if (staffData.transport === 'bike') {
+                markerClass = 'staff-marker-bike';
+                icon = '🚴';
             }
             
-            if (firstAid) {
-                iconClass = 'staff-icon-firstaid';
-                iconText = '🩹';
+            if (staffData.first_aid) {
+                markerClass = 'staff-marker-firstaid';
+                icon = '🩹';
             }
             
-            staffMarker = L.marker([staffPosition.lat, staffPosition.lng], {
-                icon: L.divIcon({
-                    html: `<div class="w-12 h-12 rounded-full flex items-center justify-center text-xl ${iconClass} border-2 border-white shadow-lg">${iconText}</div>`,
+            if (!staffMarker) {
+                // Create new marker
+                staffMarker = L.marker([staffPosition.lat, staffPosition.lng], {
+                    icon: L.divIcon({
+                        html: `<div class="w-12 h-12 rounded-full ${markerClass} flex items-center justify-center text-xl shadow-lg">${icon}</div>`,
+                        className: 'custom-div-icon',
+                        iconSize: [48, 48]
+                    }),
+                    zIndexOffset: 1000
+                }).addTo(map);
+                
+                staffMarker.bindTooltip(createStaffTooltip(staffData));
+            } else {
+                // Update existing marker
+                staffMarker.setLatLng([staffPosition.lat, staffPosition.lng]);
+                staffMarker.setIcon(L.divIcon({
+                    html: `<div class="w-12 h-12 rounded-full ${markerClass} flex items-center justify-center text-xl shadow-lg">${icon}</div>`,
                     className: 'custom-div-icon',
                     iconSize: [48, 48]
-                }),
-                zIndexOffset: 1000
-            }).addTo(map);
-            
-            staffMarker.bindTooltip(`You (${transport})${firstAid ? ' - First Aid' : ''}`);
+                }));
+                
+                staffMarker.setTooltipContent(createStaffTooltip(staffData));
+            }
         }
 
-        // Update staff location and status
-        function updateStaffLocation() {
-            if (staffPosition && document.getElementById('shareLocation').checked) {
-                socket.emit('staff_location', {
-                    lat: staffPosition.lat,
-                    lng: staffPosition.lng,
-                    transport: document.getElementById('transportMode').value,
-                    share_location: document.getElementById('shareLocation').checked,
-                    first_aid: document.getElementById('firstAid').checked
+        function createStaffTooltip(data) {
+            return `
+                <div class="font-bold">${data.name} (You)</div>
+                <div class="text-xs">
+                    <i class="fas fa-${data.transport === 'bike' ? 'bicycle' : 'walking'} mr-1"></i>
+                    ${data.transport === 'bike' ? 'Bike' : 'Walk'}
+                    ${data.first_aid ? ' • 🩹 First Aid' : ''}
+                </div>
+                <div class="text-xs">${data.status || 'Available'}</div>
+            `;
+        }
+
+        function addRunnerMarker(runnerId, runner) {
+            const isEmergency = runner.emergency || activeEmergencies[runnerId];
+            const markerClass = isEmergency ? 'emergency-marker pulse-emergency' : 'runner-marker';
+            const markerColor = isEmergency ? '#EF4444' : '#3B82F6';
+            const borderColor = isEmergency ? '#DC2626' : '#1D4ED8';
+            
+            if (runnerMarkers[runnerId]) {
+                runnerMarkers[runnerId].setLatLng([runner.location[0], runner.location[1]]);
+                runnerMarkers[runnerId].setStyle({
+                    fillColor: markerColor,
+                    color: borderColor,
+                    className: markerClass
                 });
+                
+                runnerMarkers[runnerId].setTooltipContent(createRunnerTooltip(runner, isEmergency));
+            } else {
+                const marker = L.circleMarker([runner.location[0], runner.location[1]], {
+                    radius: 10,
+                    fillColor: markerColor,
+                    color: borderColor,
+                    weight: 3,
+                    opacity: 1,
+                    fillOpacity: 0.8,
+                    className: markerClass
+                }).addTo(map);
+                
+                marker.bindTooltip(createRunnerTooltip(runner, isEmergency));
+                
+                // Add click event to center on runner
+                marker.on('click', function() {
+                    map.setView([runner.location[0], runner.location[1]], 16);
+                    showNotification(`Centered on ${runner.name}`);
+                });
+                
+                runnerMarkers[runnerId] = marker;
             }
         }
 
-        // Update staff status manually
-        function updateStaffStatus() {
-            if (staffMarker) {
-                map.removeLayer(staffMarker);
-                staffMarker = null;
+        function createRunnerTooltip(runner, isEmergency) {
+            return `
+                <div class="font-bold">${runner.name}</div>
+                <div class="text-xs ${isEmergency ? 'text-red-600 font-bold' : 'text-gray-600'}">
+                    ${isEmergency ? '🚨 EMERGENCY - NEEDS HELP' : 'Running'}
+                </div>
+                ${runner.battery ? `<div class="text-xs text-gray-500">Battery: ${Math.round(runner.battery)}%</div>` : ''}
+            `;
+        }
+
+        function addOtherStaffMarker(staffId, staff) {
+            if (staffId === socket.id) return; // Skip our own marker
+            
+            let markerClass = 'staff-marker-walk';
+            let icon = '👨‍⚕️';
+            
+            if (staff.transport === 'bike') {
+                markerClass = 'staff-marker-bike';
+                icon = '🚴';
             }
+            
+            if (staff.first_aid) {
+                markerClass = 'staff-marker-firstaid';
+                icon = '🩹';
+            }
+            
+            if (staffMarkers[staffId]) {
+                staffMarkers[staffId].setLatLng([staff.location[0], staff.location[1]]);
+                staffMarkers[staffId].setIcon(L.divIcon({
+                    html: `<div class="w-10 h-10 rounded-full ${markerClass} flex items-center justify-center text-lg shadow-lg">${icon}</div>`,
+                    className: 'custom-div-icon',
+                    iconSize: [40, 40]
+                }));
+                
+                staffMarkers[staffId].setTooltipContent(createOtherStaffTooltip(staff));
+            } else {
+                const marker = L.marker([staff.location[0], staff.location[1]], {
+                    icon: L.divIcon({
+                        html: `<div class="w-10 h-10 rounded-full ${markerClass} flex items-center justify-center text-lg shadow-lg">${icon}</div>`,
+                        className: 'custom-div-icon',
+                        iconSize: [40, 40]
+                    })
+                }).addTo(map);
+                
+                marker.bindTooltip(createOtherStaffTooltip(staff));
+                staffMarkers[staffId] = marker;
+            }
+        }
+
+        function createOtherStaffTooltip(staff) {
+            return `
+                <div class="font-bold">${staff.name}</div>
+                <div class="text-xs">
+                    <i class="fas fa-${staff.transport === 'bike' ? 'bicycle' : 'walking'} mr-1"></i>
+                    ${staff.transport === 'bike' ? 'Bike' : 'Walk'}
+                    ${staff.first_aid ? ' • 🩹 First Aid' : ''}
+                </div>
+                <div class="text-xs">${staff.status || 'Available'}</div>
+            `;
+        }
+
+        function addEmergencyMarker(emergencyId, emergency) {
+            if (emergencyMarkers[emergencyId]) {
+                emergencyMarkers[emergencyId].setLatLng(emergency.location);
+            } else {
+                const marker = L.marker(emergency.location, {
+                    icon: L.divIcon({
+                        html: `<div class="w-14 h-14 rounded-full bg-red-500 border-4 border-white flex items-center justify-center text-2xl shadow-lg pulse-emergency">🚨</div>`,
+                        className: 'custom-div-icon',
+                        iconSize: [56, 56]
+                    }),
+                    zIndexOffset: 2000
+                }).addTo(map);
+                
+                marker.bindTooltip(`
+                    <div class="font-bold text-red-700">EMERGENCY!</div>
+                    <div class="text-sm">${emergency.user_name}</div>
+                    <div class="text-xs">${emergency.description || 'Medical emergency'}</div>
+                    <div class="text-xs">${formatTimeAgo(emergency.timestamp)}</div>
+                `);
+                
+                // Add click event to show emergency details
+                marker.on('click', function() {
+                    showEmergencyDetails(emergencyId);
+                });
+                
+                emergencyMarkers[emergencyId] = marker;
+            }
+        }
+
+        function centerOnMyLocation() {
             if (staffPosition) {
-                createStaffMarker();
-                updateStaffLocation();
+                map.setView([staffPosition.lat, staffPosition.lng], 16);
+                showNotification('Centered on your location');
+            } else {
+                showNotification('Waiting for location...', 'error');
             }
-            
-            showNotification('Status updated successfully!');
         }
 
-        // Socket event handlers
-        socket.on('connect', () => {
-            document.getElementById('status').textContent = 'Connected';
-            document.getElementById('status').className = 'px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm';
-        });
-
-        socket.on('disconnect', () => {
-            document.getElementById('status').textContent = 'Disconnected';
-            document.getElementById('status').className = 'px-3 py-1 rounded-full bg-red-100 text-red-800 text-sm';
-        });
-
-        socket.on('all_data', (data) => {
-            // Clear existing markers
-            Object.values(userMarkers).forEach(marker => map.removeLayer(marker));
-            Object.values(staffMarkers).forEach(marker => map.removeLayer(marker));
-            userMarkers = {};
-            staffMarkers = {};
+        function fitAllMarkers() {
+            const bounds = new L.LatLngBounds();
             
-            // Add user markers
-            Object.entries(data.users).forEach(([sid, userData]) => {
-                if (sid !== socket.id) {
-                    addUserMarker(sid, userData);
+            // Add staff marker
+            if (staffPosition) {
+                bounds.extend([staffPosition.lat, staffPosition.lng]);
+            }
+            
+            // Add runner markers
+            Object.values(runners).forEach(runner => {
+                if (runner.location) {
+                    bounds.extend([runner.location[0], runner.location[1]]);
                 }
             });
             
             // Add other staff markers
-            Object.entries(data.staff).forEach(([sid, staffData]) => {
-                if (sid !== socket.id && staffData.share_location) {
-                    addStaffMarker(sid, staffData);
+            Object.values(allStaff).forEach(staff => {
+                if (staff.location) {
+                    bounds.extend([staff.location[0], staff.location[1]]);
                 }
             });
             
-            // Show emergency alerts
-            Object.entries(data.emergencies).forEach(([eid, emergency]) => {
-                showEmergencyAlert(eid, emergency);
-            });
-        });
-
-        socket.on('user_update', (userData) => {
-            if (userData.sid !== socket.id) {
-                addUserMarker(userData.sid || socket.id, userData);
-            }
-        });
-
-        socket.on('staff_update', (staffData) => {
-            if (staffData.sid !== socket.id) {
-                if (staffData.share_location) {
-                    addStaffMarker(staffData.sid || socket.id, staffData);
-                } else if (staffMarkers[staffData.sid || socket.id]) {
-                    map.removeLayer(staffMarkers[staffData.sid || socket.id]);
-                    delete staffMarkers[staffData.sid || socket.id];
+            // Add emergency markers
+            Object.values(activeEmergencies).forEach(emergency => {
+                if (emergency.location) {
+                    bounds.extend(emergency.location);
                 }
+            });
+            
+            if (bounds.isValid()) {
+                map.fitBounds(bounds.pad(0.1));
             }
-        });
+        }
 
-        socket.on('user_left', (data) => {
-            if (userMarkers[data.sid]) {
-                map.removeLayer(userMarkers[data.sid]);
-                delete userMarkers[data.sid];
+        function toggleLegend() {
+            const legend = document.getElementById('mapLegend');
+            legend.classList.toggle('hidden');
+        }
+
+        // ========== LOCATION TRACKING ==========
+        function startLocationTracking() {
+            if (!navigator.geolocation) {
+                showNotification('Geolocation is not supported by your device', 'error');
+                return;
             }
-        });
+            
+            const options = {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 15000
+            };
+            
+            watchId = navigator.geolocation.watchPosition(
+                handlePositionUpdate,
+                handlePositionError,
+                options
+            );
+            
+            // Also update periodically
+            setInterval(sendLocationUpdate, 10000);
+        }
 
-        socket.on('staff_left', (data) => {
+        function handlePositionUpdate(position) {
+            staffPosition = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                speed: position.coords.speed || 0,
+                heading: position.coords.heading || 0,
+                timestamp: new Date(position.timestamp)
+            };
+            
+            updateStaffMarker();
+            sendLocationUpdate();
+        }
+
+        function handlePositionError(error) {
+            console.error('Geolocation error:', error);
+            let message = 'Location error: ';
+            
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message += 'Permission denied. Please enable location services.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message += 'Location unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    message += 'Location request timed out.';
+                    break;
+                default:
+                    message += 'Unknown error.';
+            }
+            
+            showNotification(message, 'error');
+        }
+
+        function sendLocationUpdate() {
+            if (!staffPosition || !socket || !socket.connected) return;
+            
+            socket.emit('staff_location_update', {
+                lat: staffPosition.lat,
+                lng: staffPosition.lng,
+                transport: staffData.transport,
+                first_aid: staffData.first_aid,
+                share_location: staffData.share_location,
+                status: staffData.status,
+                battery: staffData.battery
+            });
+            
+            // Simulate battery drain
+            if (staffData.battery > 20) {
+                staffData.battery -= 0.02;
+            }
+        }
+
+        // ========== WEBSOCKET FUNCTIONS ==========
+        function initWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const socketUrl = `${protocol}//${host}`;
+            
+            socket = io(socketUrl, {
+                transports: ['websocket', 'polling'],
+                upgrade: true,
+                forceNew: true,
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 20000
+            });
+            
+            // Socket event handlers
+            socket.on('connect', handleSocketConnect);
+            socket.on('disconnect', handleSocketDisconnect);
+            socket.on('connected', handleConnected);
+            socket.on('registration_success', handleRegistrationSuccess);
+            socket.on('initial_data', handleInitialData);
+            socket.on('user_location_updated', handleUserLocationUpdated);
+            socket.on('staff_location_updated', handleStaffLocationUpdated);
+            socket.on('staff_joined', handleStaffJoined);
+            socket.on('staff_left', handleStaffLeft);
+            socket.on('user_joined', handleUserJoined);
+            socket.on('user_left', handleUserLeft);
+            socket.on('emergency_alert', handleEmergencyAlert);
+            socket.on('emergency_response', handleEmergencyResponse);
+            socket.on('emergency_resolved', handleEmergencyResolved);
+            socket.on('emergency_cancelled', handleEmergencyCancelled);
+            socket.on('system_status', handleSystemStatus);
+            socket.on('staff_status_updated', handleStaffStatusUpdated);
+        }
+
+        function handleSocketConnect() {
+            console.log('Socket connecting...');
+            updateConnectionStatus('Connecting...', 'bg-yellow-500');
+        }
+
+        function handleSocketDisconnect() {
+            console.log('Socket disconnected');
+            updateConnectionStatus('Disconnected', 'status-disconnected');
+            showNotification('Lost connection to server', 'error');
+        }
+
+        function handleConnected(data) {
+            console.log('Socket connected with ID:', data.sid);
+            updateConnectionStatus('Connected', 'status-connected');
+            
+            // Register as staff
+            socket.emit('register_staff', {
+                name: staffData.name,
+                location: staffPosition ? [staffPosition.lat, staffPosition.lng] : [1.3521, 103.8198],
+                transport: staffData.transport,
+                first_aid: staffData.first_aid,
+                share_location: staffData.share_location,
+                status: staffData.status,
+                battery: staffData.battery
+            });
+            
+            // Request initial data
+            socket.emit('get_initial_data');
+        }
+
+        function handleRegistrationSuccess(data) {
+            console.log('Registered as staff:', data.staff_id);
+            showNotification('Connected to race tracker as staff', 'success');
+        }
+
+        function handleInitialData(data) {
+            console.log('Received initial data:', data);
+            
+            // Update counts
+            updateEmergencyCount(Object.keys(data.emergencies).length);
+            updateRunnerCount(Object.keys(data.users).length);
+            updateStaffCount(Object.keys(data.staff).length);
+            
+            // Clear existing markers
+            Object.values(runnerMarkers).forEach(marker => map.removeLayer(marker));
+            Object.values(staffMarkers).forEach(marker => map.removeLayer(marker));
+            Object.values(emergencyMarkers).forEach(marker => map.removeLayer(marker));
+            runnerMarkers = {};
+            staffMarkers = {};
+            emergencyMarkers = {};
+            
+            // Store data
+            runners = data.users;
+            allStaff = data.staff;
+            activeEmergencies = data.emergencies;
+            
+            // Add runner markers
+            Object.entries(runners).forEach(([runnerId, runner]) => {
+                addRunnerMarker(runnerId, runner);
+            });
+            
+            // Add other staff markers
+            Object.entries(allStaff).forEach(([staffId, staff]) => {
+                if (staffId !== socket.id && staff.share_location !== false) {
+                    addOtherStaffMarker(staffId, staff);
+                }
+            });
+            
+            // Add emergency markers
+            Object.entries(activeEmergencies).forEach(([emergencyId, emergency]) => {
+                addEmergencyMarker(emergencyId, emergency);
+            });
+            
+            // Update UI
+            updateRunnersList();
+            updateStaffList();
+            updateEmergencyList();
+            updateDashboardStats();
+            
+            // Show emergency panel if there are emergencies
+            if (Object.keys(activeEmergencies).length > 0) {
+                document.getElementById('emergencyPanel').classList.remove('hidden');
+            }
+        }
+
+        function handleUserLocationUpdated(data) {
+            if (runners[data.sid]) {
+                runners[data.sid].location = data.location;
+                runners[data.sid].name = data.name;
+                runners[data.sid].emergency = data.emergency;
+                
+                addRunnerMarker(data.sid, runners[data.sid]);
+                updateRunnersList();
+                updateDashboardStats();
+            }
+        }
+
+        function handleStaffLocationUpdated(data) {
+            if (data.sid === socket.id) return; // Skip our own updates
+            
+            if (allStaff[data.sid]) {
+                allStaff[data.sid] = { ...allStaff[data.sid], ...data };
+                addOtherStaffMarker(data.sid, allStaff[data.sid]);
+                updateStaffList();
+                updateDashboardStats();
+            }
+        }
+
+        function handleUserJoined(data) {
+            console.log('User joined:', data);
+            runners[data.sid] = data;
+            addRunnerMarker(data.sid, data);
+            updateRunnerCount(Object.keys(runners).length);
+            updateRunnersList();
+            
+            showNotification(`${data.name} joined the race`, 'info');
+        }
+
+        function handleUserLeft(data) {
+            console.log('User left:', data);
+            if (runnerMarkers[data.sid]) {
+                map.removeLayer(runnerMarkers[data.sid]);
+                delete runnerMarkers[data.sid];
+            }
+            delete runners[data.sid];
+            updateRunnerCount(Object.keys(runners).length);
+            updateRunnersList();
+            
+            showNotification(`${data.name} left the race`, 'info');
+        }
+
+        function handleStaffJoined(data) {
+            console.log('Staff joined:', data);
+            if (data.sid !== socket.id) {
+                allStaff[data.sid] = data;
+                addOtherStaffMarker(data.sid, data);
+                updateStaffCount(Object.keys(allStaff).length + 1);
+                updateStaffList();
+                
+                showNotification(`${data.name} joined as staff`, 'info');
+            }
+        }
+
+        function handleStaffLeft(data) {
+            console.log('Staff left:', data);
             if (staffMarkers[data.sid]) {
                 map.removeLayer(staffMarkers[data.sid]);
                 delete staffMarkers[data.sid];
             }
-        });
-
-        socket.on('emergency_alert', (data) => {
-            showEmergencyAlert(data.emergency_id, {
-                user_id: data.user_id,
-                location: data.location
-            });
-            showNotification(`EMERGENCY! User ${data.user_id.slice(0,4)} needs help!`);
+            delete allStaff[data.sid];
+            updateStaffCount(Object.keys(allStaff).length + 1);
+            updateStaffList();
             
-            // Update user marker to emergency
-            if (userMarkers[data.user_id]) {
-                userMarkers[data.user_id].setStyle({
-                    fillColor: '#EF4444',
-                    color: '#DC2626',
-                    className: 'emergency-user'
+            showNotification(`${data.name} left`, 'info');
+        }
+
+        function handleEmergencyAlert(data) {
+            console.log('Emergency alert:', data);
+            
+            // Play emergency sound
+            const audio = document.getElementById('emergencySound');
+            audio.play().catch(e => console.log('Audio play failed:', e));
+            
+            // Show notification
+            if (Notification.permission === 'granted') {
+                new Notification('🚨 EMERGENCY ALERT', {
+                    body: `${data.user_name} needs emergency assistance!`,
+                    icon: '/favicon.ico',
+                    tag: 'emergency',
+                    requireInteraction: true
                 });
             }
-        });
+            
+            // Show in-app notification
+            showEmergencyNotification(data);
+            
+            // Add to active emergencies
+            activeEmergencies[data.emergency_id] = data;
+            
+            // Add emergency marker
+            addEmergencyMarker(data.emergency_id, data);
+            
+            // Update UI
+            updateEmergencyCount(Object.keys(activeEmergencies).length);
+            updateEmergencyList();
+            updateRunnersList();
+            
+            // Show emergency panel
+            document.getElementById('emergencyPanel').classList.remove('hidden');
+            
+            // Update dashboard
+            updateDashboardStats();
+        }
 
-        socket.on('emergency_resolved', (data) => {
-            removeEmergencyAlert(data.emergency_id);
+        function handleEmergencyResponse(data) {
+            console.log('Emergency response:', data);
             
-            // Update user marker back to normal
-            if (userMarkers[data.user_id]) {
-                userMarkers[data.user_id].setStyle({
-                    fillColor: '#3B82F6',
-                    color: '#1D4ED8',
-                    className: ''
-                });
-            }
-        });
-
-        // Add user marker
-        function addUserMarker(sid, data) {
-            const marker = L.circleMarker([data.location[0], data.location[1]], {
-                radius: 8,
-                fillColor: data.emergency ? '#EF4444' : '#3B82F6',
-                color: data.emergency ? '#DC2626' : '#1D4ED8',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.8,
-                className: data.emergency ? 'emergency-user' : ''
-            }).addTo(map);
-            
-            marker.bindTooltip(`${data.name}${data.emergency ? ' - EMERGENCY!' : ''}`);
-            
-            if (userMarkers[sid]) {
-                userMarkers[sid].setLatLng([data.location[0], data.location[1]]);
-            } else {
-                userMarkers[sid] = marker;
+            if (activeEmergencies[data.emergency_id]) {
+                activeEmergencies[data.emergency_id].responding_staff = data.staff_id;
+                activeEmergencies[data.emergency_id].responding_staff_name = data.staff_name;
+                updateEmergencyList();
+                
+                // Update staff status in list
+                if (allStaff[data.staff_id]) {
+                    allStaff[data.staff_id].status = 'responding';
+                    updateStaffList();
+                }
+                
+                showNotification(`${data.staff_name} is responding to emergency`, 'info');
             }
         }
 
-        // Add staff marker
-        function addStaffMarker(sid, data) {
-            let iconClass = 'staff-icon-walk';
-            let iconText = '👨‍⚕️';
+        function handleEmergencyResolved(data) {
+            console.log('Emergency resolved:', data);
             
-            if (data.transport === 'bike') {
-                iconClass = 'staff-icon-bike';
-                iconText = '🚴';
+            // Remove emergency marker
+            if (emergencyMarkers[data.emergency_id]) {
+                map.removeLayer(emergencyMarkers[data.emergency_id]);
+                delete emergencyMarkers[data.emergency_id];
             }
             
-            if (data.first_aid) {
-                iconClass = 'staff-icon-firstaid';
-                iconText = '🩹';
+            // Remove from active emergencies
+            delete activeEmergencies[data.emergency_id];
+            
+            // Update runner marker if emergency was for a runner
+            if (runnerMarkers[data.user_id]) {
+                runnerMarkers[data.user_id].setStyle({
+                    fillColor: '#3B82F6',
+                    color: '#1D4ED8',
+                    className: 'runner-marker'
+                });
             }
             
-            const marker = L.marker([data.location[0], data.location[1]], {
-                icon: L.divIcon({
-                    html: `<div class="w-10 h-10 rounded-full flex items-center justify-center text-lg ${iconClass} border-2 border-white shadow-lg">${iconText}</div>`,
-                    className: 'custom-div-icon',
+            // Update staff status if they were responding
+            Object.values(allStaff).forEach(staff => {
+                if (staff.status === 'responding') {
+                    staff.status = 'available';
+                }
+            });
+            
+            // Update UI
+            updateEmergencyCount(Object.keys(activeEmergencies).length);
+            updateEmergencyList();
+            updateRunnersList();
+            updateStaffList();
+            updateDashboardStats();
+            
+            // Hide emergency panel if no more emergencies
+            if (Object.keys(activeEmergencies).length === 0) {
+                document.getElementById('emergencyPanel').classList.add('hidden');
+            }
+            
+            showNotification(`Emergency resolved by ${data.resolved_by || 'staff'}`, 'success');
+        }
+
+        function handleEmergencyCancelled(data) {
+            console.log('Emergency cancelled:', data);
+            handleEmergencyResolved(data);
+            showNotification('Emergency was cancelled by the runner', 'info');
+        }
+
+        function handleSystemStatus(data) {
+            updateRunnerCount(data.active_users);
+            updateStaffCount(data.active_staff);
+            updateEmergencyCount(data.active_emergencies);
+        }
+
+        function handleStaffStatusUpdated(data) {
+            if (allStaff[data.sid]) {
+                allStaff[data.sid] = { ...allStaff[data.sid], ...data };
+                addOtherStaffMarker(data.sid, allStaff[data.sid]);
+                updateStaffList();
+            }
+        }
+
+        // ========== CONTROL FUNCTIONS ==========
+        function setupEventListeners() {
+            // Location sharing toggle
+            document.getElementById('shareLocationToggle').addEventListener('change', function() {
+                staffData.share_location = this.checked;
+                document.getElementById('locationStatus').textContent = 
+                    this.checked ? 'Your location is visible to runners' : 'Your location is hidden';
+                sendLocationUpdate();
+            });
+            
+            // First aid toggle
+            document.getElementById('firstAidToggle').addEventListener('change', function() {
+                staffData.first_aid = this.checked;
+                document.getElementById('firstAidStatus').textContent = 
+                    this.checked ? 'Carrying first aid kit' : 'No first aid kit';
+                updateStaffMarker();
+                sendLocationUpdate();
+            });
+            
+            // Status select
+            document.getElementById('statusSelect').addEventListener('change', function() {
+                staffData.status = this.value;
+                sendLocationUpdate();
+            });
+        }
+
+        function setTransportMode(mode) {
+            staffData.transport = mode;
+            
+            // Update button styles
+            document.getElementById('walkBtn').className = 
+                `transport-btn flex-1 py-2 ${mode === 'walk' ? 'bg-orange-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} font-medium rounded-lg transition-all`;
+            document.getElementById('bikeBtn').className = 
+                `transport-btn flex-1 py-2 ${mode === 'bike' ? 'bg-amber-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} font-medium rounded-lg transition-all`;
+            
+            updateStaffMarker();
+            sendLocationUpdate();
+        }
+
+        function updateStaffStatus() {
+            const status = document.getElementById('statusSelect').value;
+            const transport = staffData.transport;
+            const firstAid = document.getElementById('firstAidToggle').checked;
+            const shareLocation = document.getElementById('shareLocationToggle').checked;
+            
+            staffData.status = status;
+            staffData.transport = transport;
+            staffData.first_aid = firstAid;
+            staffData.share_location = shareLocation;
+            
+            socket.emit('update_staff_status', {
+                transport: transport,
+                first_aid: firstAid,
+                share_location: shareLocation,
+                status: status
+            });
+            
+            sendLocationUpdate();
+            
+            const audio = document.getElementById('notificationSound');
+            audio.play().catch(console.error);
+            
+            showNotification('Status updated successfully', 'success');
+        }
+
+        // ========== EMERGENCY FUNCTIONS ==========
+        function showEmergencyDetails(emergencyId) {
+            const emergency = activeEmergencies[emergencyId];
+            if (!emergency) return;
+            
+            selectedEmergencyId = emergencyId;
+            
+            // Calculate distance
+            let distanceText = 'calculating...';
+            let etaText = 'calculating...';
+            
+            if (staffPosition) {
+                const distance = calculateDistance(
+                    staffPosition.lat, staffPosition.lng,
+                    emergency.location[0], emergency.location[1]
+                );
+                distanceText = distance < 1000 ? 
+                    `${Math.round(distance)}m away` : 
+                    `${(distance/1000).toFixed(1)}km away`;
+                
+                // Estimate ETA based on transport mode
+                const speed = staffData.transport === 'bike' ? 15 : 5; // km/h
+                const etaMinutes = Math.round((distance / 1000) / speed * 60);
+                etaText = etaMinutes <= 1 ? '1 minute' : `${etaMinutes} minutes`;
+            }
+            
+            // Update modal content
+            document.getElementById('modalTitle').textContent = 'Respond to Emergency';
+            document.getElementById('modalDescription').textContent = 
+                `${emergency.user_name} needs help: ${emergency.description || 'Medical emergency'}`;
+            document.getElementById('modalRunnerName').textContent = emergency.user_name;
+            document.getElementById('modalDistance').textContent = `Distance: ${distanceText}`;
+            document.getElementById('modalTime').textContent = `Reported: ${formatTimeAgo(emergency.timestamp)}`;
+            document.getElementById('modalYourTransport').textContent = 
+                `Transport: ${staffData.transport === 'bike' ? 'Bike' : 'Walk'}`;
+            document.getElementById('modalYourFirstAid').textContent = 
+                `First Aid: ${staffData.first_aid ? 'Yes' : 'No'}`;
+            document.getElementById('modalETA').textContent = `Estimated arrival: ${etaText}`;
+            
+            // Show modal
+            document.getElementById('responseModal').classList.remove('hidden');
+        }
+
+        function closeResponseModal() {
+            document.getElementById('responseModal').classList.add('hidden');
+            selectedEmergencyId = null;
+        }
+
+        function confirmEmergencyResponse() {
+            if (!selectedEmergencyId) return;
+            
+            socket.emit('staff_respond_emergency', {
+                emergency_id: selectedEmergencyId
+            });
+            
+            // Update our status
+            staffData.status = 'responding';
+            document.getElementById('statusSelect').value = 'responding';
+            sendLocationUpdate();
+            
+            closeResponseModal();
+            
+            const audio = document.getElementById('notificationSound');
+            audio.play().catch(console.error);
+            
+            showNotification(`You are now responding to emergency`, 'success');
+        }
+
+        function callRunner() {
+            // In a real app, this would call the runner's emergency contact
+            showNotification('Runner contact would be called here', 'info');
+            
+            // Fallback to emergency number
+            window.location.href = 'tel:+6512345678';
+        }
+
+        function resolveEmergency(emergencyId) {
+            if (!confirm('Mark this emergency as resolved?')) return;
+            
+            socket.emit('resolve_emergency', {
+                emergency_id: emergencyId,
+                notes: 'Resolved by staff'
+            });
+        }
+
+        // ========== UI UPDATE FUNCTIONS ==========
+        function updateConnectionStatus(text, className) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.innerHTML = `<i class="fas fa-wifi mr-1"></i> ${text}`;
+            statusEl.className = `${className} text-white text-xs px-2 py-1 rounded-full`;
+        }
+
+        function updateRunnerCount(count) {
+            document.getElementById('runnerCount').innerHTML = 
+                `<i class="fas fa-running mr-1"></i> ${count}`;
+            document.getElementById('totalRunners').textContent = count;
+        }
+
+        function updateStaffCount(count) {
+            document.getElementById('staffCount').innerHTML = 
+                `<i class="fas fa-user-shield mr-1"></i> ${count}`;
+            document.getElementById('totalStaff').textContent = count;
+        }
+
+        function updateEmergencyCount(count) {
+            document.getElementById('emergencyCount').innerHTML = 
+                `<i class="fas fa-exclamation-triangle mr-1"></i> ${count}`;
+            document.getElementById('activeEmergencyCount').textContent = count;
+            
+            if (count > 0) {
+                document.getElementById('emergencyPanel').classList.remove('hidden');
+            } else {
+                document.getElementById('emergencyPanel').classList.add('hidden');
+            }
+        }
+
+        function updateRunnersList() {
+            const container = document.getElementById('runnersList');
+            if (Object.keys(runners).length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <i class="fas fa-running text-4xl mb-2"></i>
+                        <p>No runners connected yet</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            Object.entries(runners)
+                .sort((a, b) => {
+                    // Sort emergencies first, then by name
+                    const aEmergency = a[1].emergency || activeEmergencies[a[0]];
+                    const bEmergency = b[1].emergency || activeEmergencies[b[0]];
+                    if (aEmergency && !bEmergency) return -1;
+                    if (!aEmergency && bEmergency) return 1;
+                    return a[1].name.localeCompare(b[1].name);
+                })
+                .forEach(([runnerId, runner]) => {
+                    const isEmergency = runner.emergency || activeEmergencies[runnerId];
+                    let distanceText = '--';
+                    
+                    if (staffPosition && runner.location) {
+                        const distance = calculateDistance(
+                            staffPosition.lat, staffPosition.lng,
+                            runner.location[0], runner.location[1]
+                        );
+                        distanceText = distance < 1000 ? 
+                            `${Math.round(distance)}m` : 
+                            `${(distance/1000).toFixed(1)}km`;
+                    }
+                    
+                    const card = document.createElement('div');
+                    card.className = `bg-white rounded-lg p-3 border ${isEmergency ? 'border-red-300 bg-red-50' : 'border-gray-200'} shadow-sm`;
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center">
+                                <div class="w-10 h-10 rounded-full ${isEmergency ? 'bg-red-100' : 'bg-blue-100'} flex items-center justify-center mr-3">
+                                    <i class="fas fa-running ${isEmergency ? 'text-red-600' : 'text-blue-600'}"></i>
+                                </div>
+                                <div>
+                                    <div class="font-medium">${runner.name}</div>
+                                    <div class="text-sm ${isEmergency ? 'text-red-600 font-bold' : 'text-gray-600'}">
+                                        ${isEmergency ? '🚨 EMERGENCY' : 'Running safely'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm font-bold ${distanceText === '--' ? 'text-gray-500' : 'text-blue-600'}">
+                                    ${distanceText}
+                                </div>
+                                ${runner.battery ? `
+                                    <div class="text-xs text-gray-500">
+                                        <i class="fas fa-battery-${runner.battery > 50 ? 'full' : runner.battery > 20 ? 'half' : 'quarter'} ${runner.battery > 20 ? 'text-green-500' : 'text-red-500'}"></i>
+                                        ${Math.round(runner.battery)}%
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ${isEmergency ? `
+                            <div class="mt-2 flex space-x-2">
+                                <button onclick="showEmergencyDetails('${runnerId}')" 
+                                        class="flex-1 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded transition-all">
+                                    <i class="fas fa-first-aid mr-1"></i> Respond
+                                </button>
+                                <button onclick="centerOnRunner('${runnerId}')" 
+                                        class="flex-1 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition-all">
+                                    <i class="fas fa-map-marker-alt mr-1"></i> View
+                                </button>
+                            </div>
+                        ` : ''}
+                    `;
+                    container.appendChild(card);
+                });
+        }
+
+        function centerOnRunner(runnerId) {
+            if (runners[runnerId] && runners[runnerId].location) {
+                map.setView([runners[runnerId].location[0], runners[runnerId].location[1]], 16);
+                showNotification(`Centered on ${runners[runnerId].name}`);
+            }
+        }
+
+        function filterRunners(filter) {
+            // Update button styles
+            document.getElementById('filterAll').className = 
+                `px-3 py-1 ${filter === 'all' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} text-sm rounded-lg transition-all`;
+            document.getElementById('filterEmergency').className = 
+                `px-3 py-1 ${filter === 'emergency' ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} text-sm rounded-lg transition-all`;
+            document.getElementById('filterNearby').className = 
+                `px-3 py-1 ${filter === 'nearby' ? 'bg-green-500 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} text-sm rounded-lg transition-all`;
+            
+            // In a real implementation, you would filter the runners list
+            // For now, we'll just show a notification
+            showNotification(`Showing ${filter} runners`, 'info');
+        }
+
+        function updateStaffList() {
+            const container = document.getElementById('staffList');
+            const otherStaff = Object.values(allStaff).filter(staff => staff.sid !== socket.id);
+            
+            if (otherStaff.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8 text-gray-400 col-span-full">
+                        <i class="fas fa-user-shield text-4xl mb-2"></i>
+                        <p>No other staff connected</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            // Add our own card first
+            const ourCard = document.createElement('div');
+            ourCard.className = 'bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200 shadow-sm';
+            ourCard.innerHTML = `
+                <div class="flex items-center mb-2">
+                    <div class="w-12 h-12 rounded-full bg-orange-200 flex items-center justify-center mr-3">
+                        <i class="fas fa-user-shield text-orange-600 text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="font-bold">${staffData.name} (You)</div>
+                        <div class="text-sm text-gray-600">
+                            <i class="fas fa-${staffData.transport === 'bike' ? 'bicycle' : 'walking'} mr-1"></i>
+                            ${staffData.transport === 'bike' ? 'Bike' : 'Walk'}
+                            ${staffData.first_aid ? ' • 🩹 First Aid' : ''}
+                        </div>
+                    </div>
+                </div>
+                <div class="text-sm">
+                    <span class="px-2 py-1 rounded-full ${getStatusColor(staffData.status)} text-white">
+                        ${staffData.status}
+                    </span>
+                    <span class="ml-2 text-gray-500">
+                        <i class="fas fa-location-dot ${staffData.share_location ? 'text-green-500' : 'text-gray-400'}"></i>
+                        ${staffData.share_location ? 'Sharing' : 'Hidden'}
+                    </span>
+                </div>
+            `;
+            container.appendChild(ourCard);
+            
+            // Add other staff cards
+            otherStaff.forEach(staff => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl p-4 border border-gray-200 shadow-sm';
+                card.innerHTML = `
+                    <div class="flex items-center mb-2">
+                        <div class="w-12 h-12 rounded-full ${staff.transport === 'bike' ? 'bg-amber-100' : staff.first_aid ? 'bg-red-100' : 'bg-orange-100'} flex items-center justify-center mr-3">
+                            <i class="fas fa-${staff.transport === 'bike' ? 'bicycle' : 'walking'} ${staff.transport === 'bike' ? 'text-amber-600' : staff.first_aid ? 'text-red-600' : 'text-orange-600'} text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="font-bold">${staff.name}</div>
+                            <div class="text-sm text-gray-600">
+                                ${staff.transport === 'bike' ? 'Bike' : 'Walk'}
+                                ${staff.first_aid ? ' • 🩹 First Aid' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-sm">
+                        <span class="px-2 py-1 rounded-full ${getStatusColor(staff.status)} text-white">
+                            ${staff.status || 'available'}
+                        </span>
+                        <span class="ml-2 text-gray-500">
+                            <i class="fas fa-location-dot ${staff.share_location !== false ? 'text-green-500' : 'text-gray-400'}"></i>
+                            ${staff.share_location !== false ? 'Sharing' : 'Hidden'}
+                        </span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function getStatusColor(status) {
+            switch(status) {
+                case 'available': return 'bg-green-500';
+                case 'busy': return 'bg-yellow-500';
+                case 'responding': return 'bg-red-500';
+                case 'off-duty': return 'bg-gray-500';
+                default: return 'bg-gray-500';
+            }
+        }
+
+        function updateEmergencyList() {
+            const container = document.getElementById('emergencyList');
+            const emergencies = Object.values(activeEmergencies);
+            
+            if (emergencies.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-gray-400">
+                        <i class="fas fa-check-circle text-2xl mb-2"></i>
+                        <p>No active emergencies</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            emergencies.forEach(emergency => {
+                let distanceText = '--';
+                let etaText = '--';
+                
+                if (staffPosition) {
+                    const distance = calculateDistance(
+                        staffPosition.lat, staffPosition.lng,
+                        emergency.location[0], emergency.location[1]
+                    );
+                    distanceText = distance < 1000 ? 
+                        `${Math.round(distance)}m` : 
+                        `${(distance/1000).toFixed(1)}km`;
+                    
+                    // Estimate ETA
+                    const speed = staffData.transport === 'bike' ? 15 : 5; // km/h
+                    const etaMinutes = Math.round((distance / 1000) / speed * 60);
+                    etaText = etaMinutes <= 1 ? '1 min' : `${etaMinutes} min`;
+                }
+                
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg p-3 border border-red-200 shadow-sm';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1">
+                            <div class="font-bold text-red-700">
+                                <i class="fas fa-exclamation-triangle mr-1"></i>
+                                ${emergency.user_name}
+                            </div>
+                            <div class="text-sm text-gray-600">${emergency.description || 'Medical emergency'}</div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                <i class="far fa-clock mr-1"></i>
+                                ${formatTimeAgo(emergency.timestamp)}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold text-red-600">${distanceText}</div>
+                            <div class="text-xs text-gray-500">${etaText} ETA</div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="showEmergencyDetails('${emergency.emergency_id}')" 
+                                class="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-all">
+                            <i class="fas fa-first-aid mr-1"></i> Respond
+                        </button>
+                        <button onclick="resolveEmergency('${emergency.emergency_id}')" 
+                                class="flex-1 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg transition-all">
+                            <i class="fas fa-check mr-1"></i> Resolve
+                        </button>
+                    </div>
+                    ${emergency.responding_staff_name ? `
+                        <div class="mt-2 text-xs text-blue-600">
+                            <i class="fas fa-user-shield mr-1"></i>
+                            ${emergency.responding_staff_name} is responding
+                        </div>
+                    ` : ''}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function updateDashboardStats() {
+            // Update runner status
+            const emergencyRunners = Object.values(runners).filter(r => 
+                r.emergency || activeEmergencies[r.sid]
+            ).length;
+            
+            if (emergencyRunners > 0) {
+                document.getElementById('runnerStatus').innerHTML = 
+                    `<span class="text-red-600 font-medium">${emergencyRunners} runners need help</span>`;
+            } else {
+                document.getElementById('runnerStatus').textContent = 'All runners safe';
+            }
+            
+            // Update staff status
+            const firstAidStaff = Object.values(allStaff).filter(s => 
+                s.first_aid && s.sid !== socket.id
+            ).length;
+            
+            if (staffData.first_aid) {
+                document.getElementById('staffStatus').textContent = 
+                    `${firstAidStaff + 1} with first aid (including you)`;
+            } else {
+                document.getElementById('staffStatus').textContent = 
+                    `${firstAidStaff} with first aid`;
+            }
+            
+            // Update response time (simulated)
+            if (Object.keys(activeEmergencies).length > 0) {
+                document.getElementById('avgResponse').textContent = '3:45';
+                document.getElementById('responseStatus').textContent = 
+                    `${Object.keys(activeEmergencies).length} active emergencies`;
+            } else {
+                document.getElementById('avgResponse').textContent = '--';
+                document.getElementById('responseStatus').textContent = 'No emergencies today';
+            }
+        }
+
+        // ========== NOTIFICATION FUNCTIONS ==========
+        function showEmergencyNotification(emergency) {
+            const notification = document.createElement('div');
+            notification.className = 'notification-slide bg-red-500 text-white rounded-lg p-4 shadow-xl max-w-md';
+            notification.innerHTML = `
+                <div class="flex items-start">
+                    <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center mr-3 flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-xl"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h4 class="font-bold text-lg">🚨 EMERGENCY ALERT</h4>
+                        <p class="text-sm">${emergency.user_name} needs emergency assistance!</p>
+                        <div class="text-xs opacity-90 mt-1">
+                            <i class="far fa-clock mr-1"></i>
+                            ${formatTimeAgo(emergency.timestamp)}
+                        </div>
+                        <div class="flex space-x-2 mt-3">
+                            <button onclick="showEmergencyDetails('${emergency.emergency_id}')" 
+                                    class="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded transition-all">
+                                <i class="fas fa-first-aid mr-1"></i> Respond
+                            </button>
+                            <button onclick="dismissNotification(this)" 
+                                    class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded transition-all">
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const container = document.getElementById('notificationContainer');
+            container.appendChild(notification);
+            
+            // Auto-dismiss after 30 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.classList.add('opacity-0', 'translate-x-full');
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
+                }
+            }, 30000);
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification-slide ${type === 'error' ? 'bg-red-100 border border-red-300 text-red-700' : type === 'success' ? 'bg-green-100 border border-green-300 text-green-700' : 'bg-blue-100 border border-blue-300 text-blue-700'} rounded-lg p-3 shadow-lg max-w-md`;
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas ${type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle'} mr-2"></i>
+                    <span>${message}</span>
+                    <button onclick="dismissNotification(this)" class="ml-auto text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            
+            const container = document.getElementById('notificationContainer');
+            container.appendChild(notification);
+            
+            // Auto-dismiss after 5 seconds (unless it's an emergency notification)
+            if (type !== 'emergency') {
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.classList.add('opacity-0', 'translate-x-full');
+                        setTimeout(() => {
+                            if (notification.parentNode) {
+                                notification.parentNode.removeChild(notification);
+                            }
+                        }, 300);
+                    }
+                }, 5000);
+            }
+            
+            // Play notification sound for non-emergency notifications
+            if (type === 'success' || type === 'info') {
+                const audio = document.getElementById('notificationSound');
+                audio.play().catch(console.error);
+            }
+        }
+
+        function dismissNotification(button) {
+            const notification = button.closest('.notification-slide');
+            if (notification) {
+                notification.classList.add('opacity-0', 'translate-x-full');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }
+        }
+
+        // ========== UTILITY FUNCTIONS ==========
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c; // Distance in meters
+        }
+
+        function formatTimeAgo(timestamp) {
+            const now = new Date();
+            const then = new Date(timestamp);
+            const diffMs = now - then;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            
+            if (diffMs < 60000) return 'just now';
+            if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+            if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+            
+            return then.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ========== PAGE VISIBILITY HANDLING ==========
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && staffPosition) {
+                // Page became visible again - send immediate update
+                sendLocationUpdate();
+            }
+        });
+
+        // ========== WINDOW UNLOAD HANDLING ==========
+        window.addEventListener('beforeunload', function() {
+            // Clean up resources
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            
+            // Send disconnect notification
+            if (socket && socket.connected) {
+                socket.disconnect();
+            }
+        });
+
+        // ========== ERROR HANDLING ==========
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.error);
+            showNotification('An error occurred. Please refresh the page.', 'error');
+        });
+    </script>
+</body>
+</html>
