@@ -8,11 +8,18 @@
   ],
   "routes": [
     {
+      "src": "/socket.io",
+      "dest": "/app.py"
+    },
+    {
       "src": "/(.*)",
-      "dest": "app.py"
+      "dest": "/app.py"
     }
   ],
-  "env": {
-    "FLASK_ENV": "production"
+  "functions": {
+    "app.py": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
   }
 }
