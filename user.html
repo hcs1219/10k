@@ -1,107 +1,147 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-<style>
-* {margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000;color:white;height:100vh;overflow:hidden}
-#map{height:100vh;width:100vw;position:fixed;top:0;left:0}
-.safe-area-inset-top {padding-top:env(safe-area-inset-top)}
-.btn {
-    position:fixed;border:none;border-radius:20px;font-weight:600;font-size:16px;
-    box-shadow:0 8px 25px rgba(0,0,0,0.4);cursor:pointer;transition:all 0.2s;
-    min-height:50px;display:flex;align-items:center;justify-content:center
-}
-.btn:active{transform:scale(0.95)}
-#emergency{top:20px;left:20px;background:linear-gradient(45deg,#ff4444,#ff6666);color:white;width:140px;box-shadow:0 8px 25px rgba(255,68,68,0.4)}
-#routes{bottom:20px;left:20px;background:rgba(74,144,226,0.95);backdrop-filter:blur(20px);width:180px;padding:20px;border-radius:25px;box-shadow:0 12px 35px rgba(0,0,0,0.3)}
-.route-btn{display:block;width:100%;margin:8px 0;padding:14px 12px;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:white;font-size:15px}
-.route-btn:active{background:rgba(255,255,255,0.4)}
-.staff-count{top:20px;right:20px;background:linear-gradient(45deg,#ff4444,#ff6666);padding:12px 16px;border-radius:25px;font-size:15px;font-weight:600;box-shadow:0 8px 25px rgba(255,68,68,0.4);min-width:80px;text-align:center}
-#user-status{top:85px;left:20px;background:rgba(0,0,0,0.85);backdrop-filter:blur(15px);color:#4ade80;padding:12px 16px;border-radius:20px;font-size:13px;border-left:4px solid #4ade80}
-.legend{bottom:20px;right:20px;background:rgba(255,255,255,0.1);backdrop-filter:blur(15px);padding:15px;border-radius:20px;font-size:12px}
-.legend div{margin:4px 0}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runner View – RunGuard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    #map { height: 65vh; min-height: 400px; }
+    .emergency { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.15);} 100% {transform:scale(1);} }
+  </style>
 </head>
-<body>
-<div id="map"></div>
-<button id="emergency" onclick="sendEmergency()">🚨求救</button>
-<div id="user-status" style="display:none">✅求救已發送 (點擊取消)</div>
-<div id="routes">
-    <div style="font-weight:700;margin-bottom:12px;font-size:16px">🏃 路線</div>
-    <button class="route-btn" onclick="showRoute('red')">🔴紅線</button>
-    <button class="route-btn" onclick="showRoute('green')">🟢綠線</button>
-    <button class="route-btn" onclick="showRoute('blue')">🔵藍線</button>
-</div>
-<div class="staff-count" id="staff-count">👥0</div>
-<div class="legend">
-    <div>🟠 橙色 = 自行車</div>
-    <div>🔴 紅色 = 步行</div>
-    <div>✨ 亮 = 有急救包</div>
-</div>
+<body class="bg-gray-100 min-h-screen flex flex-col">
 
-<script>
-const map=L.map('map',{zoomControl:false}).setView([22.4,114.12],13)
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attributionControl:false}).addTo(map)
+  <header class="bg-blue-700 text-white p-4 text-center font-bold text-lg">
+    Participant View – Live Race Map
+  </header>
 
-const socket=io({transports:['websocket']})
-let routeLayers={},staffMarkers={}
-const routes=<%- JSON.stringify(routes) %>
-const userId='u'+Math.random().toString(36).slice(2,7)
+  <main class="flex-1 p-3 flex flex-col gap-3">
+    <div id="map" class="w-full rounded shadow"></div>
 
-Object.entries(routes).forEach(([color,points])=>{
-    routeLayers[color]=L.polyline(points,{
-        color:color==='red'?'#f44336':color==='green'?'#4caf50':'#2196f3',
-        weight:8,opacity:0.4
-    }).addTo(map)
-})
+    <div class="flex flex-wrap gap-2 justify-center">
+      <button onclick="selectRoute('A')" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Route A</button>
+      <button onclick="selectRoute('B')" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">Route B</button>
+      <button onclick="selectRoute('C')" class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">Route C</button>
+    </div>
 
-function showRoute(color){
-    Object.values(routeLayers).forEach(l=>l.setStyle({opacity:0.4}))
-    routeLayers[color].setStyle({opacity:1,weight:10})
-    map.fitBounds(routeLayers[color].getBounds(),{padding:[50,50]})
-}
+    <button id="emergencyBtn" class="mt-2 w-full py-5 bg-red-600 hover:bg-red-700 text-white text-xl font-bold rounded-lg shadow-lg transition">
+      🚨 EMERGENCY – NEED HELP
+    </button>
 
-socket.on('staff_update',data=>{
-    if(staffMarkers[data.staffId]){
-        staffMarkers[data.staffId].setLatLng([data.lat,data.lng])
-        staffMarkers[data.staffId].setStyle({
-            radius:16,color:data.mode==='bike'?'#ff9800':'#f44336',
-            fillColor:data.mode==='bike'?'#ff9800':'#f44336',
-            fillOpacity:data.firstaid?0.9:0.7,weight:4
-        })
-    }else{
-        staffMarkers[data.staffId]=L.circleMarker([data.lat,data.lng],{
-            radius:16,color:data.mode==='bike'?'#ff9800':'#f44336',
-            fillColor:data.mode==='bike'?'#ff9800':'#f44336',
-            fillOpacity:data.firstaid?0.9:0.7,weight:4
-        }).addTo(map).bindPopup(
-            `<b>${data.mode==='bike'?'🚴自行車':'🚶步行'}</b><br>${data.firstaid?'🩹有急救包':''}`,
-            {closeButton:false,maxWidth:200}
-        )
+    <div id="status" class="text-center text-sm text-gray-600">Waiting for location…</div>
+  </main>
+
+  <script>
+    const socket = io();
+
+    let map, myMarker, markers = {}, routeLayer;
+    let emergencyActive = false;
+    let currentRoute = 'A';
+
+    const routes = {
+      A: [[22.300, 114.170],[22.295, 114.185],[22.285, 114.190],[22.275, 114.175]],
+      B: [[22.300, 114.170],[22.310, 114.165],[22.320, 114.180],[22.315, 114.195]],
+      C: [[22.300, 114.170],[22.290, 114.155],[22.280, 114.160],[22.275, 114.175]]
+    };
+
+    function initMap() {
+      map = L.map('map').setView([22.300, 114.170], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+      routeLayer = L.polyline(routes.A, {color:'green', weight:5}).addTo(map);
     }
-    document.getElementById('staff-count').textContent=`👥${Object.keys(staffMarkers).length}`
-})
 
-let emergencyBtn=document.getElementById('emergency'),statusDiv=document.getElementById('user-status'),hasEmergency=false
-function sendEmergency(){
-    navigator.geolocation.getCurrentPosition(pos=>{
-        if(hasEmergency){
-            socket.emit('cancel_emergency',{userId})
-            emergencyBtn.innerHTML='🚨求救';emergencyBtn.style.background='linear-gradient(45deg,#ff4444,#ff6666)'
-            statusDiv.style.display='none';hasEmergency=false
-        }else{
-            socket.emit('emergency_call',{userId,lat:pos.coords.latitude,lng:pos.coords.longitude,time:Date.now()})
-            emergencyBtn.innerHTML='❌取消';emergencyBtn.style.background='linear-gradient(45deg,#ffaa00,#ffcc00)'
-            statusDiv.style.display='block';hasEmergency=true
-        }
-    },err=>alert('GPS錯誤: '+err.message),{timeout:10000})
-}
+    function selectRoute(name) {
+      currentRoute = name;
+      if (routeLayer) map.removeLayer(routeLayer);
+      const color = name==='A'?'green':name==='B'?'purple':'orange';
+      routeLayer = L.polyline(routes[name], {color, weight:5}).addTo(map);
+      map.fitBounds(routeLayer.getBounds());
+    }
 
-showRoute('red')
-</script>
+    function startLocation() {
+      if (!navigator.geolocation) {
+        document.getElementById('status').textContent = "Geolocation not supported";
+        return;
+      }
+      navigator.geolocation.watchPosition(
+        pos => {
+          const {latitude: lat, longitude: lng} = pos.coords;
+          socket.emit('update_location', {role:'participant', lat, lng, name:`Runner-${Math.random().toString(36).slice(2,8)}`});
+          if (!myMarker) {
+            myMarker = L.circleMarker([lat,lng], {radius:10, color:'blue', fillColor:'#3388ff', fillOpacity:0.8, weight:3})
+              .addTo(map);
+            map.setView([lat,lng], 16);
+          } else {
+            myMarker.setLatLng([lat,lng]);
+          }
+          document.getElementById('status').textContent = `Location shared • ${new Date().toLocaleTimeString()}`;
+        },
+        err => document.getElementById('status').textContent = `Location error: ${err.message}`,
+        {enableHighAccuracy:true, timeout:5000, maximumAge:0}
+      );
+    }
+
+    socket.on('connect', () => {
+      document.getElementById('status').textContent = "Connected – starting GPS…";
+      startLocation();
+    });
+
+    socket.on('update_all', data => {
+      Object.keys(markers).forEach(k => { map.removeLayer(markers[k]); delete markers[k]; });
+
+      Object.entries(data.staff || {}).forEach(([sid, s]) => {
+        if (!s.share_location || !s.lat) return;
+        const color = s.first_aid ? '#dc2626' : '#f59e0b';
+        const iconTxt = s.transport==='bike' ? '🚴' : '🚶';
+        const m = L.marker([s.lat,s.lng], {
+          icon: L.divIcon({html:`<div style="color:${color};font-size:2.2rem">${iconTxt}</div>`, iconSize:[44,44], iconAnchor:[22,44]})
+        }).addTo(map).bindTooltip(s.name || 'Staff');
+        markers[sid] = m;
+      });
+
+      Object.entries(data.participants || {}).forEach(([sid, p]) => {
+        if (!p.lat) return;
+        const isEmergency = !!p.emergency;
+        const m = L.circleMarker([p.lat,p.lng], {
+          radius:8,
+          color: isEmergency ? 'red' : 'blue',
+          fillColor: isEmergency ? '#ef4444' : '#3b82f6',
+          fillOpacity:0.7,
+          weight: isEmergency ? 4 : 2,
+          className: isEmergency ? 'emergency' : ''
+        }).addTo(map).bindTooltip(p.name || 'Runner');
+        markers[sid] = m;
+      });
+    });
+
+    socket.on('emergency_alert', data => {
+      alert(`Emergency from ${data.name || 'a runner'}!`);
+    });
+
+    document.getElementById('emergencyBtn').onclick = function() {
+      if (emergencyActive) {
+        socket.emit('cancel_emergency');
+        if (myMarker) myMarker.setStyle({color:'blue', fillColor:'#3388ff'});
+        this.textContent = "🚨 EMERGENCY – NEED HELP";
+        emergencyActive = false;
+      } else if (myMarker) {
+        const pos = myMarker.getLatLng();
+        socket.emit('emergency', {lat: pos.lat, lng: pos.lng});
+        myMarker.setStyle({color:'red', fillColor:'#ef4444'});
+        this.textContent = "🚨 CANCEL HELP REQUEST";
+        emergencyActive = true;
+      }
+    };
+
+    initMap();
+    selectRoute('A');
+  </script>
 </body>
 </html>
