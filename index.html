@@ -2,397 +2,1331 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Race Tracker - Runner View</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🏃‍♂️ Race Tracker - Runner View</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'emergency-red': '#EF4444',
+                        'staff-orange': '#F97316',
+                        'staff-bike': '#F59E0B',
+                        'first-aid': '#DC2626',
+                        'route-blue': '#3B82F6',
+                        'route-green': '#10B981',
+                        'route-purple': '#8B5CF6'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Socket.io -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
-        #map { height: calc(100vh - 160px); }
-        .user-icon { background-color: #3B82F6; }
-        .emergency-icon { background-color: #EF4444; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        .staff-icon-walk { background-color: #F97316; }
-        .staff-icon-bike { background-color: #F59E0B; }
-        .staff-icon-firstaid { background-color: #DC2626; color: white; }
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+        
+        #map {
+            height: 60vh;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .pulse-emergency {
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        
+        .status-connected {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        }
+        
+        .status-disconnected {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+        }
+        
+        .route-active {
+            border: 3px solid #3B82F6 !important;
+            transform: scale(1.02);
+        }
+        
+        .user-marker {
+            background: #3B82F6;
+            border: 3px solid #1D4ED8;
+        }
+        
+        .emergency-marker {
+            background: #EF4444;
+            border: 3px solid #DC2626;
+        }
+        
+        .staff-marker-walk {
+            background: #F97316;
+            border: 3px solid #EA580C;
+        }
+        
+        .staff-marker-bike {
+            background: #F59E0B;
+            border: 3px solid #D97706;
+        }
+        
+        .staff-marker-firstaid {
+            background: #DC2626;
+            border: 3px solid #B91C1C;
+            color: white;
+        }
+        
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 8px;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            #map {
+                height: 50vh;
+            }
+            
+            .mobile-stack {
+                flex-direction: column;
+            }
+            
+            .mobile-full {
+                width: 100% !important;
+            }
+        }
+        
+        /* Prevent text selection on buttons */
+        button {
+            user-select: none;
+        }
+        
+        /* Smooth transitions */
+        .transition-all {
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
-<body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-2">
+<body class="bg-gray-50 text-gray-800">
+    <div class="min-h-screen pb-20">
         <!-- Header -->
-        <div class="flex justify-between items-center mb-2">
-            <h1 class="text-2xl font-bold text-blue-700">Race Tracker</h1>
-            <div class="flex items-center space-x-2">
-                <span id="status" class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm">Connected</span>
-                <button onclick="window.location.href='/staff'" class="px-3 py-1 bg-gray-200 rounded-lg text-sm">
-                    Staff View
-                </button>
-            </div>
-        </div>
-
-        <!-- Route Selector -->
-        <div class="mb-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Select Route</label>
-            <div class="flex space-x-2 overflow-x-auto pb-2">
-                <button onclick="showRoute('route_1')" class="route-btn flex-shrink-0 px-4 py-2 bg-blue-500 text-white rounded-lg">
-                    Coastal Route
-                </button>
-                <button onclick="showRoute('route_2')" class="route-btn flex-shrink-0 px-4 py-2 bg-green-500 text-white rounded-lg">
-                    Park Trail
-                </button>
-                <button onclick="showRoute('route_3')" class="route-btn flex-shrink-0 px-4 py-2 bg-purple-500 text-white rounded-lg">
-                    City Loop
-                </button>
-            </div>
-        </div>
-
-        <!-- Emergency Button -->
-        <div class="mb-3">
-            <button id="emergencyBtn" onclick="requestEmergency()" 
-                    class="w-full py-3 px-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg transition-all duration-200">
-                🆘 EMERGENCY - Request Staff Support
-            </button>
-            <button id="cancelEmergencyBtn" onclick="cancelEmergency()" 
-                    class="hidden w-full py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg mt-2">
-                ✅ Cancel Emergency
-            </button>
-            <div id="emergencyInfo" class="hidden mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p class="text-red-700 font-medium">Emergency Reported!</p>
-                <p class="text-red-600 text-sm">Staff have been notified. Help is on the way.</p>
-            </div>
-        </div>
-
-        <!-- Map Container -->
-        <div id="map" class="rounded-xl border-2 border-gray-300 shadow-lg"></div>
-
-        <!-- Info Panel -->
-        <div class="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-4">
-                    <div class="flex items-center">
-                        <div class="w-4 h-4 rounded-full bg-blue-500 mr-2"></div>
-                        <span class="text-sm">You</span>
+        <div class="bg-white shadow-sm sticky top-0 z-50">
+            <div class="container mx-auto px-4 py-3">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <i class="fas fa-running text-blue-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-900">Race Tracker</h1>
+                            <div class="flex items-center space-x-2">
+                                <span id="connectionStatus" class="status-connected text-white text-xs px-2 py-1 rounded-full">
+                                    <i class="fas fa-wifi mr-1"></i> Connecting...
+                                </span>
+                                <span id="userCount" class="text-xs text-gray-500">
+                                    <i class="fas fa-users mr-1"></i> 0
+                                </span>
+                                <span id="staffCount" class="text-xs text-gray-500">
+                                    <i class="fas fa-user-shield mr-1"></i> 0
+                                </span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex items-center">
-                        <div class="w-4 h-4 rounded-full bg-orange-500 mr-2"></div>
-                        <span class="text-sm">Staff</span>
-                    </div>
-                    <div class="flex items-center">
-                        <div class="w-4 h-4 rounded-full bg-red-500 mr-2 animate-pulse"></div>
-                        <span class="text-sm">Emergency</span>
+                    
+                    <div class="flex space-x-2">
+                        <button onclick="window.location.href='/staff'" 
+                                class="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-all flex items-center">
+                            <i class="fas fa-user-shield mr-2"></i> Staff View
+                        </button>
                     </div>
                 </div>
-                <div id="locationInfo" class="text-sm text-gray-600">
-                    Getting location...
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="container mx-auto px-4 py-4">
+            <!-- Route Selection -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold text-gray-800 mb-3">Select Your Route</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <button onclick="selectRoute('route_1')" id="route1" 
+                            class="route-card bg-blue-50 border-2 border-blue-200 rounded-xl p-4 text-left transition-all hover:bg-blue-100 route-active">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="flex items-center mb-2">
+                                    <div class="w-4 h-4 rounded-full bg-route-blue mr-2"></div>
+                                    <h3 class="font-bold text-gray-900">Coastal Route</h3>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-1">5.2km • Easy • Seaside views</p>
+                                <p class="text-xs text-gray-500">Most popular route</p>
+                            </div>
+                            <i class="fas fa-route text-blue-400 text-xl"></i>
+                        </div>
+                    </button>
+                    
+                    <button onclick="selectRoute('route_2')" id="route2" 
+                            class="route-card bg-green-50 border-2 border-green-200 rounded-xl p-4 text-left transition-all hover:bg-green-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="flex items-center mb-2">
+                                    <div class="w-4 h-4 rounded-full bg-route-green mr-2"></div>
+                                    <h3 class="font-bold text-gray-900">Park Trail</h3>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-1">7.8km • Medium • Forest trail</p>
+                                <p class="text-xs text-gray-500">Shaded paths</p>
+                            </div>
+                            <i class="fas fa-tree text-green-400 text-xl"></i>
+                        </div>
+                    </button>
+                    
+                    <button onclick="selectRoute('route_3')" id="route3" 
+                            class="route-card bg-purple-50 border-2 border-purple-200 rounded-xl p-4 text-left transition-all hover:bg-purple-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="flex items-center mb-2">
+                                    <div class="w-4 h-4 rounded-full bg-route-purple mr-2"></div>
+                                    <h3 class="font-bold text-gray-900">City Loop</h3>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-1">10.5km • Hard • Urban challenge</p>
+                                <p class="text-xs text-gray-500">For experienced runners</p>
+                            </div>
+                            <i class="fas fa-city text-purple-400 text-xl"></i>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Emergency Button -->
+            <div class="mb-4">
+                <div id="normalState">
+                    <button onclick="requestEmergencySupport()" 
+                            class="w-full py-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center text-lg pulse-emergency">
+                        <i class="fas fa-sos mr-3 text-2xl"></i>
+                        <div class="text-left">
+                            <div class="font-bold">EMERGENCY ASSISTANCE</div>
+                            <div class="text-sm font-normal opacity-90">Tap if you need immediate help</div>
+                        </div>
+                    </button>
+                    <p class="text-xs text-gray-500 text-center mt-2">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Your location will be shared with all staff members
+                    </p>
+                </div>
+                
+                <div id="emergencyActive" class="hidden">
+                    <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-4 mb-3">
+                        <div class="flex items-start">
+                            <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mr-3">
+                                <i class="fas fa-ambulance text-red-600 text-2xl"></i>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="font-bold text-red-700 text-lg">Emergency Assistance Requested</h3>
+                                <p class="text-red-600 mb-3">Staff have been notified and are on their way to your location.</p>
+                                
+                                <div class="grid grid-cols-2 gap-2 mb-3">
+                                    <div class="bg-white rounded-lg p-2 text-center">
+                                        <div class="text-sm text-gray-500">Response Time</div>
+                                        <div class="font-bold text-green-600" id="responseTime">2-5 min</div>
+                                    </div>
+                                    <div class="bg-white rounded-lg p-2 text-center">
+                                        <div class="text-sm text-gray-500">Staff En Route</div>
+                                        <div class="font-bold text-blue-600" id="staffEnRoute">0</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex space-x-2">
+                                    <button onclick="cancelEmergency()" 
+                                            class="flex-1 py-2 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-all">
+                                        <i class="fas fa-check mr-2"></i> I'm OK Now
+                                    </button>
+                                    <button onclick="callEmergencyContact()" 
+                                            class="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-all">
+                                        <i class="fas fa-phone mr-2"></i> Call Support
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-lg font-semibold text-gray-800">Live Tracking Map</h2>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="centerOnMyLocation()" 
+                                class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-all">
+                            <i class="fas fa-location-crosshairs mr-1"></i> My Location
+                        </button>
+                        <button onclick="toggleLegend()" 
+                                class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded-lg transition-all">
+                            <i class="fas fa-layer-group"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="map" class="w-full"></div>
+                
+                <!-- Legend (Collapsible) -->
+                <div id="mapLegend" class="mt-3 bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full user-marker mr-2"></div>
+                            <span class="text-sm">You</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full staff-marker-walk mr-2"></div>
+                            <span class="text-sm">Staff (Walk)</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full staff-marker-bike mr-2"></div>
+                            <span class="text-sm">Staff (Bike)</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full staff-marker-firstaid mr-2"></div>
+                            <span class="text-sm">First Aid</span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 rounded-full emergency-marker mr-2 pulse-emergency"></div>
+                            <span class="text-sm">Emergency</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Location & Status Panel -->
+            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-semibold text-gray-800">Your Status</h3>
+                    <div class="flex items-center space-x-2">
+                        <span id="batteryLevel" class="text-sm text-gray-600">
+                            <i class="fas fa-battery-full text-green-500"></i> 100%
+                        </span>
+                        <span id="locationAccuracy" class="text-sm text-gray-600">
+                            <i class="fas fa-crosshairs"></i> High
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="text-center p-3 bg-blue-50 rounded-lg">
+                        <div class="text-2xl font-bold text-blue-600" id="distanceTraveled">0.0</div>
+                        <div class="text-xs text-gray-600">km traveled</div>
+                    </div>
+                    
+                    <div class="text-center p-3 bg-green-50 rounded-lg">
+                        <div class="text-2xl font-bold text-green-600" id="currentSpeed">0.0</div>
+                        <div class="text-xs text-gray-600">km/h speed</div>
+                    </div>
+                    
+                    <div class="text-center p-3 bg-orange-50 rounded-lg">
+                        <div class="text-2xl font-bold text-orange-600" id="timeElapsed">00:00</div>
+                        <div class="text-xs text-gray-600">time elapsed</div>
+                    </div>
+                    
+                    <div class="text-center p-3 bg-purple-50 rounded-lg">
+                        <div class="text-2xl font-bold text-purple-600" id="nearestStaff">--</div>
+                        <div class="text-xs text-gray-600">nearest staff</div>
+                    </div>
+                </div>
+                
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div class="flex justify-between">
+                        <div>
+                            <div class="text-sm text-gray-500">Your Location</div>
+                            <div id="currentLocation" class="font-mono text-sm">Getting location...</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm text-gray-500">Last Update</div>
+                            <div id="lastUpdate" class="font-mono text-sm">--:--:--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staff Nearby -->
+            <div id="staffNearbySection" class="mt-4 hidden">
+                <h3 class="font-semibold text-gray-800 mb-2">Staff Nearby</h3>
+                <div id="staffNearbyList" class="space-y-2">
+                    <!-- Staff cards will be added here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Emergency Modal -->
+        <div id="emergencyModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl max-w-md w-full p-6">
+                <div class="text-center mb-4">
+                    <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+                        <i class="fas fa-exclamation-triangle text-red-600 text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900">Confirm Emergency</h3>
+                    <p class="text-gray-600 mt-2">Are you sure you need emergency assistance? All staff members will be alerted.</p>
+                </div>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Emergency Type</label>
+                        <select id="emergencyType" class="w-full border border-gray-300 rounded-lg p-2">
+                            <option value="medical">Medical Emergency</option>
+                            <option value="injury">Running Injury</option>
+                            <option value="lost">Lost/Disoriented</option>
+                            <option value="other">Other Emergency</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Additional Details (Optional)</label>
+                        <textarea id="emergencyDetails" rows="2" class="w-full border border-gray-300 rounded-lg p-2" placeholder="e.g., ankle injury, feeling dizzy..."></textarea>
+                    </div>
+                    
+                    <div class="flex space-x-3 pt-2">
+                        <button onclick="closeEmergencyModal()" 
+                                class="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-all">
+                            Cancel
+                        </button>
+                        <button onclick="confirmEmergencyRequest()" 
+                                class="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-all">
+                            <i class="fas fa-sos mr-2"></i> Request Help
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Audio for notifications -->
+    <audio id="emergencySound" preload="auto">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-emergency-alert-sound-2907.mp3" type="audio/mpeg">
+    </audio>
+
     <script>
-        // Initialize variables
-        let socket = io();
+        // ========== GLOBAL VARIABLES ==========
+        let socket = null;
         let map = null;
         let userMarker = null;
-        let currentRoute = null;
         let routeLayer = null;
         let staffMarkers = {};
-        let emergencyId = null;
+        let userMarkers = {};
+        let currentRoute = 'route_1';
         let userPosition = null;
         let watchId = null;
+        let emergencyId = null;
+        let userData = {
+            name: `Runner-${Math.floor(Math.random() * 1000)}`,
+            battery: 100,
+            distance: 0,
+            startTime: null,
+            lastPosition: null
+        };
+        let staffData = {};
+        let activeEmergencies = {};
 
-        // Initialize map
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Request notification permission
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+            
+            // Initialize map
+            initMap();
+            
+            // Initialize WebSocket connection
+            initWebSocket();
+            
+            // Start location tracking
+            startLocationTracking();
+            
+            // Start timer
+            userData.startTime = new Date();
+            updateTimer();
+            setInterval(updateTimer, 1000);
+            
+            // Request system status every 30 seconds
+            setInterval(() => {
+                if (socket && socket.connected) {
+                    socket.emit('get_initial_data');
+                }
+            }, 30000);
+        });
+
+        // ========== MAP FUNCTIONS ==========
         function initMap() {
-            map = L.map('map').setView([1.3521, 103.8198], 15);
+            // Initialize map with Singapore as default center
+            map = L.map('map', {
+                zoomControl: true,
+                dragging: true,
+                tap: true,
+                touchZoom: true,
+                scrollWheelZoom: true,
+                doubleClickZoom: true,
+                boxZoom: true,
+                keyboard: true
+            }).setView([1.3521, 103.8198], 15);
+            
+            // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
             }).addTo(map);
             
+            // Load routes
             loadRoutes();
-            startLocationTracking();
+            
+            // Add scale control
+            L.control.scale({imperial: false}).addTo(map);
         }
 
-        // Load running routes
         async function loadRoutes() {
             try {
                 const response = await fetch('/api/routes');
-                window.routes = await response.json();
-                showRoute('route_1');
+                const routes = await response.json();
+                selectRoute('route_1');
             } catch (error) {
                 console.error('Error loading routes:', error);
+                // Create default routes if API fails
+                const defaultRoutes = {
+                    route_1: { path: [[1.3521, 103.8198], [1.3525, 103.8205]], color: '#3B82F6' },
+                    route_2: { path: [[1.3510, 103.8190], [1.3505, 103.8198]], color: '#10B981' },
+                    route_3: { path: [[1.3530, 103.8180], [1.3535, 103.8190]], color: '#8B5CF6' }
+                };
+                window.routes = defaultRoutes;
+                selectRoute('route_1');
             }
         }
 
-        // Display selected route
-        function showRoute(routeId) {
+        function selectRoute(routeId) {
+            currentRoute = routeId;
+            
+            // Update active route button
+            document.querySelectorAll('.route-card').forEach(card => {
+                card.classList.remove('route-active');
+            });
+            document.getElementById(routeId).classList.add('route-active');
+            
+            // Remove existing route layer
             if (routeLayer) {
                 map.removeLayer(routeLayer);
             }
             
+            // Add new route layer
             const route = window.routes[routeId];
-            if (route) {
+            if (route && route.path) {
                 routeLayer = L.polyline(route.path, {
                     color: route.color,
-                    weight: 5,
-                    opacity: 0.7
+                    weight: 6,
+                    opacity: 0.7,
+                    lineCap: 'round',
+                    lineJoin: 'round'
                 }).addTo(map);
                 
+                // Fit map to route bounds
                 map.fitBounds(routeLayer.getBounds());
-                currentRoute = routeId;
                 
-                // Update active button
-                document.querySelectorAll('.route-btn').forEach(btn => {
-                    btn.classList.remove('ring-2', 'ring-offset-2');
+                // Add route markers
+                route.path.forEach((point, index) => {
+                    L.marker(point, {
+                        icon: L.divIcon({
+                            html: `<div class="w-8 h-8 rounded-full bg-white border-2 border-${route.color.replace('#', '')} flex items-center justify-center text-xs font-bold">${index + 1}</div>`,
+                            className: 'custom-div-icon',
+                            iconSize: [32, 32]
+                        })
+                    }).addTo(map).bindTooltip(`Checkpoint ${index + 1}`);
                 });
-                event.target.classList.add('ring-2', 'ring-offset-2', 'ring-blue-500');
             }
         }
 
-        // Start tracking user location
+        function centerOnMyLocation() {
+            if (userPosition) {
+                map.setView([userPosition.lat, userPosition.lng], 16);
+                showNotification('Centered on your location');
+            } else {
+                showNotification('Waiting for location...');
+            }
+        }
+
+        function toggleLegend() {
+            const legend = document.getElementById('mapLegend');
+            legend.classList.toggle('hidden');
+        }
+
+        // ========== LOCATION TRACKING ==========
         function startLocationTracking() {
-            if (navigator.geolocation) {
-                watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        userPosition = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        };
-                        
-                        updateUserLocation();
-                        updateLocationInfo();
-                        
-                        if (!userMarker) {
-                            userMarker = L.circleMarker([userPosition.lat, userPosition.lng], {
-                                radius: 10,
-                                fillColor: '#3B82F6',
-                                color: '#1D4ED8',
-                                weight: 2,
-                                opacity: 1,
-                                fillOpacity: 0.8
-                            }).addTo(map);
-                        } else {
-                            userMarker.setLatLng([userPosition.lat, userPosition.lng]);
-                        }
-                        
-                        if (!map.getBounds().contains(userMarker.getLatLng())) {
-                            map.panTo([userPosition.lat, userPosition.lng]);
-                        }
-                    },
-                    (error) => {
-                        console.error('Geolocation error:', error);
-                        document.getElementById('locationInfo').innerHTML = 
-                            '<span class="text-red-600">Location access required!</span>';
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        maximumAge: 10000,
-                        timeout: 5000
-                    }
-                );
-            }
-        }
-
-        // Update user location via WebSocket
-        function updateUserLocation() {
-            if (userPosition) {
-                socket.emit('user_location', {
-                    lat: userPosition.lat,
-                    lng: userPosition.lng,
-                    emergency: emergencyId !== null
-                });
-            }
-        }
-
-        // Update location info display
-        function updateLocationInfo() {
-            if (userPosition) {
-                document.getElementById('locationInfo').innerHTML = 
-                    `${userPosition.lat.toFixed(6)}, ${userPosition.lng.toFixed(6)}`;
-            }
-        }
-
-        // Request emergency support
-        function requestEmergency() {
-            if (!userPosition) {
-                alert('Please enable location services first!');
+            if (!navigator.geolocation) {
+                showNotification('Geolocation is not supported by your device');
                 return;
             }
             
-            socket.emit('emergency_request', { location: userPosition }, (response) => {
-                emergencyId = response.emergency_id;
-                document.getElementById('emergencyBtn').classList.add('hidden');
-                document.getElementById('cancelEmergencyBtn').classList.remove('hidden');
-                document.getElementById('emergencyInfo').classList.remove('hidden');
-                
-                if (userMarker) {
-                    userMarker.setStyle({
-                        fillColor: '#EF4444',
-                        color: '#DC2626'
-                    });
-                }
-            });
+            const options = {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 15000
+            };
+            
+            watchId = navigator.geolocation.watchPosition(
+                handlePositionUpdate,
+                handlePositionError,
+                options
+            );
+            
+            // Also update periodically even if position doesn't change
+            setInterval(sendLocationUpdate, 10000);
         }
 
-        // Cancel emergency
-        function cancelEmergency() {
-            if (emergencyId) {
-                socket.emit('resolve_emergency', { emergency_id: emergencyId }, (response) => {
-                    if (response.status === 'success') {
-                        emergencyId = null;
-                        document.getElementById('emergencyBtn').classList.remove('hidden');
-                        document.getElementById('cancelEmergencyBtn').classList.add('hidden');
-                        document.getElementById('emergencyInfo').classList.add('hidden');
-                        
-                        if (userMarker) {
-                            userMarker.setStyle({
-                                fillColor: '#3B82F6',
-                                color: '#1D4ED8'
-                            });
-                        }
-                    }
-                });
+        function handlePositionUpdate(position) {
+            userPosition = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                speed: position.coords.speed || 0,
+                heading: position.coords.heading || 0,
+                timestamp: new Date(position.timestamp)
+            };
+            
+            // Update distance traveled
+            if (userData.lastPosition) {
+                const distance = calculateDistance(
+                    userData.lastPosition.lat, userData.lastPosition.lng,
+                    userPosition.lat, userPosition.lng
+                );
+                if (distance > 0) {
+                    userData.distance += distance;
+                    document.getElementById('distanceTraveled').textContent = userData.distance.toFixed(2);
+                }
+            }
+            userData.lastPosition = { ...userPosition };
+            
+            // Update UI
+            updateLocationUI();
+            
+            // Update map marker
+            updateUserMarker();
+            
+            // Update nearest staff
+            updateNearestStaff();
+            
+            // Send update to server
+            sendLocationUpdate();
+        }
+
+        function handlePositionError(error) {
+            console.error('Geolocation error:', error);
+            
+            let message = 'Unable to get your location. ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message += 'Please enable location services in your browser settings.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message += 'Location information is unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    message += 'Location request timed out.';
+                    break;
+                default:
+                    message += 'Unknown error.';
+            }
+            
+            showNotification(message, 'error');
+            document.getElementById('locationAccuracy').innerHTML = '<i class="fas fa-exclamation-triangle text-red-500"></i> Error';
+        }
+
+        function sendLocationUpdate() {
+            if (!userPosition || !socket || !socket.connected) return;
+            
+            socket.emit('user_location_update', {
+                lat: userPosition.lat,
+                lng: userPosition.lng,
+                accuracy: userPosition.accuracy,
+                speed: userPosition.speed,
+                heading: userPosition.heading,
+                battery: userData.battery,
+                emergency: emergencyId !== null
+            });
+            
+            // Simulate battery drain
+            if (userData.battery > 20) {
+                userData.battery -= 0.01;
+                updateBatteryDisplay();
             }
         }
 
-        // Socket event handlers
-        socket.on('connect', () => {
-            document.getElementById('status').textContent = 'Connected';
-            document.getElementById('status').className = 'px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm';
+        function updateUserMarker() {
+            if (!userPosition) return;
             
-            socket.emit('get_all_data');
-        });
+            const isEmergency = emergencyId !== null;
+            const markerClass = isEmergency ? 'emergency-marker' : 'user-marker';
+            const markerColor = isEmergency ? '#EF4444' : '#3B82F6';
+            const borderColor = isEmergency ? '#DC2626' : '#1D4ED8';
+            
+            if (!userMarker) {
+                // Create new marker
+                userMarker = L.circleMarker([userPosition.lat, userPosition.lng], {
+                    radius: 10,
+                    fillColor: markerColor,
+                    color: borderColor,
+                    weight: 3,
+                    opacity: 1,
+                    fillOpacity: 0.8,
+                    className: markerClass
+                }).addTo(map);
+                
+                // Add tooltip
+                userMarker.bindTooltip(`
+                    <div class="font-bold">${userData.name}</div>
+                    <div class="text-xs">${isEmergency ? '🚨 EMERGENCY - NEEDS HELP' : 'Running'}</div>
+                `);
+            } else {
+                // Update existing marker
+                userMarker.setLatLng([userPosition.lat, userPosition.lng]);
+                userMarker.setStyle({
+                    fillColor: markerColor,
+                    color: borderColor,
+                    className: markerClass
+                });
+                
+                // Update tooltip
+                userMarker.setTooltipContent(`
+                    <div class="font-bold">${userData.name}</div>
+                    <div class="text-xs">${isEmergency ? '🚨 EMERGENCY - NEEDS HELP' : 'Running'}</div>
+                `);
+            }
+        }
 
-        socket.on('disconnect', () => {
-            document.getElementById('status').textContent = 'Disconnected';
-            document.getElementById('status').className = 'px-3 py-1 rounded-full bg-red-100 text-red-800 text-sm';
-        });
+        // ========== WEBSOCKET FUNCTIONS ==========
+        function initWebSocket() {
+            // Get server URL (works for both local and Railway)
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const socketUrl = `${protocol}//${host}`;
+            
+            socket = io(socketUrl, {
+                transports: ['websocket', 'polling'],
+                upgrade: true,
+                forceNew: true,
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 20000
+            });
+            
+            // Socket event handlers
+            socket.on('connect', handleSocketConnect);
+            socket.on('disconnect', handleSocketDisconnect);
+            socket.on('connected', handleConnected);
+            socket.on('registration_success', handleRegistrationSuccess);
+            socket.on('initial_data', handleInitialData);
+            socket.on('user_location_updated', handleUserLocationUpdated);
+            socket.on('staff_location_updated', handleStaffLocationUpdated);
+            socket.on('staff_joined', handleStaffJoined);
+            socket.on('staff_left', handleStaffLeft);
+            socket.on('user_joined', handleUserJoined);
+            socket.on('user_left', handleUserLeft);
+            socket.on('emergency_alert', handleEmergencyAlert);
+            socket.on('emergency_confirmed', handleEmergencyConfirmed);
+            socket.on('emergency_response', handleEmergencyResponse);
+            socket.on('emergency_resolved', handleEmergencyResolved);
+            socket.on('emergency_cancelled', handleEmergencyCancelled);
+            socket.on('system_status', handleSystemStatus);
+        }
 
-        socket.on('all_data', (data) => {
-            // Update staff markers
-            Object.keys(staffMarkers).forEach(sid => {
-                if (!data.staff[sid]) {
-                    map.removeLayer(staffMarkers[sid]);
-                    delete staffMarkers[sid];
+        function handleSocketConnect() {
+            console.log('Socket connecting...');
+            updateConnectionStatus('Connecting...', 'bg-yellow-500');
+        }
+
+        function handleSocketDisconnect() {
+            console.log('Socket disconnected');
+            updateConnectionStatus('Disconnected', 'status-disconnected');
+            showNotification('Lost connection to server', 'error');
+        }
+
+        function handleConnected(data) {
+            console.log('Socket connected with ID:', data.sid);
+            updateConnectionStatus('Connected', 'status-connected');
+            
+            // Register as user
+            socket.emit('register_user', {
+                name: userData.name,
+                location: userPosition ? [userPosition.lat, userPosition.lng] : [1.3521, 103.8198],
+                battery: userData.battery
+            });
+            
+            // Request initial data
+            socket.emit('get_initial_data');
+        }
+
+        function handleRegistrationSuccess(data) {
+            console.log('Registered as user:', data.user_id);
+            showNotification('Connected to race tracker', 'success');
+        }
+
+        function handleInitialData(data) {
+            console.log('Received initial data:', data);
+            
+            // Update user and staff counts
+            document.getElementById('userCount').innerHTML = `<i class="fas fa-users mr-1"></i> ${Object.keys(data.users).length}`;
+            document.getElementById('staffCount').innerHTML = `<i class="fas fa-user-shield mr-1"></i> ${Object.keys(data.staff).length}`;
+            
+            // Clear existing markers
+            Object.values(staffMarkers).forEach(marker => map.removeLayer(marker));
+            Object.values(userMarkers).forEach(marker => map.removeLayer(marker));
+            staffMarkers = {};
+            userMarkers = {};
+            
+            // Add user markers
+            Object.entries(data.users).forEach(([userId, user]) => {
+                if (userId !== data.your_id) {
+                    addUserMarker(userId, user);
                 }
             });
             
-            Object.entries(data.staff).forEach(([sid, staffData]) => {
-                if (staffData.share_location) {
-                    updateStaffMarker(sid, staffData);
-                }
+            // Add staff markers
+            Object.entries(data.staff).forEach(([staffId, staff]) => {
+                addStaffMarker(staffId, staff);
             });
+            
+            // Update staff data
+            staffData = data.staff;
             
             // Check for existing emergencies
-            Object.entries(data.emergencies).forEach(([eid, emergency]) => {
-                if (emergency.user_id === socket.id) {
-                    emergencyId = eid;
-                    document.getElementById('emergencyBtn').classList.add('hidden');
-                    document.getElementById('cancelEmergencyBtn').classList.remove('hidden');
-                    document.getElementById('emergencyInfo').classList.remove('hidden');
+            if (Object.keys(data.emergencies).length > 0) {
+                const myEmergency = Object.values(data.emergencies).find(e => e.user_id === data.your_id);
+                if (myEmergency) {
+                    emergencyId = myEmergency.emergency_id;
+                    showEmergencyActiveState();
                 }
-            });
-        });
-
-        socket.on('staff_update', (staffData) => {
-            if (staffData.share_location) {
-                updateStaffMarker(staffData.sid || socket.id, staffData);
-            } else if (staffMarkers[staffData.sid || socket.id]) {
-                map.removeLayer(staffMarkers[staffData.sid || socket.id]);
-                delete staffMarkers[staffData.sid || socket.id];
-            }
-        });
-
-        socket.on('staff_left', (data) => {
-            if (staffMarkers[data.sid]) {
-                map.removeLayer(staffMarkers[data.sid]);
-                delete staffMarkers[data.sid];
-            }
-        });
-
-        socket.on('emergency_alert', (data) => {
-            if (data.user_id !== socket.id) {
-                showNotification(`Emergency reported by ${data.user_id.slice(0,4)}!`);
-            }
-        });
-
-        socket.on('emergency_resolved', (data) => {
-            if (data.user_id === socket.id) {
-                emergencyId = null;
-                document.getElementById('emergencyBtn').classList.remove('hidden');
-                document.getElementById('cancelEmergencyBtn').classList.add('hidden');
-                document.getElementById('emergencyInfo').classList.add('hidden');
-            }
-        });
-
-        // Update staff marker
-        function updateStaffMarker(sid, data) {
-            let iconClass = 'staff-icon-walk';
-            let iconText = '👨‍⚕️';
-            
-            if (data.transport === 'bike') {
-                iconClass = 'staff-icon-bike';
-                iconText = '🚴';
             }
             
-            if (data.first_aid) {
-                iconClass = 'staff-icon-firstaid';
-                iconText = '🩹';
-            }
+            // Update nearest staff
+            updateNearestStaff();
+        }
+
+        function handleUserLocationUpdated(data) {
+            if (data.sid === socket.id) return; // Skip our own updates
             
-            const marker = L.marker([data.location[0], data.location[1]], {
-                icon: L.divIcon({
-                    html: `<div class="w-10 h-10 rounded-full flex items-center justify-center text-lg ${iconClass} border-2 border-white shadow-lg">${iconText}</div>`,
-                    className: 'custom-div-icon',
-                    iconSize: [40, 40]
-                })
-            });
-            
-            const tooltip = `${data.name} (${data.transport})${data.first_aid ? ' - First Aid' : ''}`;
-            marker.bindTooltip(tooltip);
-            
-            if (staffMarkers[sid]) {
-                staffMarkers[sid].setLatLng([data.location[0], data.location[1]]);
+            if (userMarkers[data.sid]) {
+                userMarkers[data.sid].setLatLng([data.location[0], data.location[1]]);
+                
+                // Update emergency status
+                if (data.emergency) {
+                    userMarkers[data.sid].setStyle({
+                        fillColor: '#EF4444',
+                        color: '#DC2626',
+                        className: 'emergency-marker'
+                    });
+                }
             } else {
-                marker.addTo(map);
-                staffMarkers[sid] = marker;
+                addUserMarker(data.sid, {
+                    name: data.name,
+                    location: data.location,
+                    emergency: data.emergency
+                });
             }
         }
 
-        // Show notification
-        function showNotification(message) {
+        function handleStaffLocationUpdated(data) {
+            if (staffMarkers[data.sid]) {
+                staffMarkers[data.sid].setLatLng([data.location[0], data.location[1]]);
+                staffMarkers[data.sid].setTooltipContent(createStaffTooltip(data));
+            } else {
+                addStaffMarker(data.sid, data);
+            }
+            
+            // Update staff data
+            staffData[data.sid] = data;
+            
+            // Update nearest staff
+            updateNearestStaff();
+        }
+
+        function addUserMarker(userId, user) {
+            const isEmergency = user.emergency || activeEmergencies[userId];
+            const markerColor = isEmergency ? '#EF4444' : '#3B82F6';
+            const borderColor = isEmergency ? '#DC2626' : '#1D4ED8';
+            const markerClass = isEmergency ? 'emergency-marker' : 'user-marker';
+            
+            const marker = L.circleMarker([user.location[0], user.location[1]], {
+                radius: 8,
+                fillColor: markerColor,
+                color: borderColor,
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.7,
+                className: markerClass
+            }).addTo(map);
+            
+            marker.bindTooltip(`
+                <div class="font-bold">${user.name}</div>
+                <div class="text-xs">${isEmergency ? '🚨 EMERGENCY' : 'Runner'}</div>
+            `);
+            
+            userMarkers[userId] = marker;
+        }
+
+        function addStaffMarker(staffId, staff) {
+            let markerClass = 'staff-marker-walk';
+            let icon = '👨‍⚕️';
+            
+            if (staff.transport === 'bike') {
+                markerClass = 'staff-marker-bike';
+                icon = '🚴';
+            }
+            
+            if (staff.first_aid) {
+                markerClass = 'staff-marker-firstaid';
+                icon = '🩹';
+            }
+            
+            const marker = L.marker([staff.location[0], staff.location[1]], {
+                icon: L.divIcon({
+                    html: `<div class="w-10 h-10 rounded-full ${markerClass} flex items-center justify-center text-lg shadow-lg">${icon}</div>`,
+                    className: 'custom-div-icon',
+                    iconSize: [40, 40]
+                }),
+                zIndexOffset: 100
+            }).addTo(map);
+            
+            marker.bindTooltip(createStaffTooltip(staff));
+            staffMarkers[staffId] = marker;
+        }
+
+        function createStaffTooltip(staff) {
+            return `
+                <div class="font-bold">${staff.name}</div>
+                <div class="text-xs">
+                    <i class="fas fa-${staff.transport === 'bike' ? 'bicycle' : 'walking'} mr-1"></i>
+                    ${staff.transport === 'bike' ? 'Bike' : 'Walk'}
+                    ${staff.first_aid ? ' • 🩹 First Aid' : ''}
+                </div>
+                <div class="text-xs">${staff.status || 'Available'}</div>
+            `;
+        }
+
+        // ========== EMERGENCY FUNCTIONS ==========
+        function requestEmergencySupport() {
+            document.getElementById('emergencyModal').classList.remove('hidden');
+        }
+
+        function closeEmergencyModal() {
+            document.getElementById('emergencyModal').classList.add('hidden');
+        }
+
+        function confirmEmergencyRequest() {
+            if (!userPosition) {
+                showNotification('Waiting for location...', 'error');
+                return;
+            }
+            
+            const emergencyType = document.getElementById('emergencyType').value;
+            const details = document.getElementById('emergencyDetails').value;
+            
+            socket.emit('emergency_request', {
+                description: getEmergencyDescription(emergencyType),
+                notes: details,
+                phone: '', // Could capture from user profile
+                location: [userPosition.lat, userPosition.lng]
+            });
+            
+            closeEmergencyModal();
+            showNotification('Sending emergency request...');
+        }
+
+        function getEmergencyDescription(type) {
+            const descriptions = {
+                medical: 'Medical Emergency',
+                injury: 'Running Injury',
+                lost: 'Lost/Disoriented',
+                other: 'Emergency Assistance Needed'
+            };
+            return descriptions[type] || 'Emergency Assistance Needed';
+        }
+
+        function handleEmergencyAlert(data) {
+            console.log('Emergency alert:', data);
+            
+            // Play emergency sound
+            const audio = document.getElementById('emergencySound');
+            audio.play().catch(e => console.log('Audio play failed:', e));
+            
+            // Show notification
             if (Notification.permission === 'granted') {
-                new Notification('Race Tracker Alert', { body: message });
-            } else if (Notification.permission !== 'denied') {
-                Notification.requestPermission().then(permission => {
-                    if (permission === 'granted') {
-                        new Notification('Race Tracker Alert', { body: message });
-                    }
+                new Notification('🚨 EMERGENCY ALERT', {
+                    body: `${data.user_name} needs emergency assistance!`,
+                    icon: '/favicon.ico',
+                    tag: 'emergency'
                 });
             }
             
-            // Fallback to browser alert
-            alert(message);
+            // Show in-app notification
+            showNotification(`🚨 ${data.user_name} needs emergency assistance!`, 'emergency');
+            
+            // Add to active emergencies
+            activeEmergencies[data.user_id] = data;
+            
+            // If this is our emergency, show active state
+            if (data.user_id === socket.id) {
+                emergencyId = data.emergency_id;
+                showEmergencyActiveState();
+            }
+            
+            // Update user marker if exists
+            if (userMarkers[data.user_id]) {
+                userMarkers[data.user_id].setStyle({
+                    fillColor: '#EF4444',
+                    color: '#DC2626',
+                    className: 'emergency-marker pulse-emergency'
+                });
+            }
         }
 
-        // Request notification permission on load
-        document.addEventListener('DOMContentLoaded', () => {
-            initMap();
+        function handleEmergencyConfirmed(data) {
+            emergencyId = data.emergency_id;
+            showEmergencyActiveState();
             
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
-        });
+            // Play confirmation sound
+            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3');
+            audio.play().catch(console.error);
+            
+            showNotification('Emergency request confirmed! Staff are on their way.', 'success');
+        }
 
-        // Handle page visibility change
-        document.addEventListener('visibilitychange', () => {
+        function handleEmergencyResponse(data) {
+            console.log('Staff responding to emergency:', data);
+            
+            if (data.emergency_id === emergencyId) {
+                document.getElementById('staffEnRoute').textContent = '1+';
+                
+                showNotification(`${data.staff_name} is responding to your emergency!`, 'success');
+            }
+        }
+
+        function handleEmergencyResolved(data) {
+            console.log('Emergency resolved:', data);
+            
+            if (data.user_id === socket.id) {
+                emergencyId = null;
+                hideEmergencyActiveState();
+                showNotification('Emergency resolved!', 'success');
+            }
+            
+            // Remove from active emergencies
+            delete activeEmergencies[data.user_id];
+            
+            // Update user marker
+            if (userMarkers[data.user_id]) {
+                userMarkers[data.user_id].setStyle({
+                    fillColor: '#3B82F6',
+                    color: '#1D4ED8',
+                    className: 'user-marker'
+                });
+            }
+        }
+
+        function handleEmergencyCancelled(data) {
+            if (data.user_id === socket.id) {
+                emergencyId = null;
+                hideEmergencyActiveState();
+                showNotification('Emergency cancelled', 'info');
+            }
+        }
+
+        function showEmergencyActiveState() {
+            document.getElementById('normalState').classList.add('hidden');
+            document.getElementById('emergencyActive').classList.remove('hidden');
+            
+            // Update user marker
+            if (userMarker) {
+                userMarker.setStyle({
+                    fillColor: '#EF4444',
+                    color: '#DC2626',
+                    className: 'emergency-marker pulse-emergency'
+                });
+            }
+        }
+
+        function hideEmergencyActiveState() {
+            document.getElementById('normalState').classList.remove('hidden');
+            document.getElementById('emergencyActive').classList.add('hidden');
+            
+            // Update user marker
+            if (userMarker) {
+                userMarker.setStyle({
+                    fillColor: '#3B82F6',
+                    color: '#1D4ED8',
+                    className: 'user-marker'
+                });
+            }
+        }
+
+        function cancelEmergency() {
+            if (!emergencyId) return;
+            
+            socket.emit('cancel_emergency', {
+                emergency_id: emergencyId
+            });
+        }
+
+        function callEmergencyContact() {
+            // In a real app, this would call a predefined emergency contact
+            showNotification('Emergency contact would be called here', 'info');
+            
+            // Fallback to tel: link
+            window.location.href = 'tel:+6512345678';
+        }
+
+        // ========== UTILITY FUNCTIONS ==========
+        function updateConnectionStatus(text, className) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.innerHTML = `<i class="fas fa-wifi mr-1"></i> ${text}`;
+            statusEl.className = `${className} text-white text-xs px-2 py-1 rounded-full`;
+        }
+
+        function updateLocationUI() {
+            if (!userPosition) return;
+            
+            // Update location text
+            document.getElementById('currentLocation').textContent = 
+                `${userPosition.lat.toFixed(6)}, ${userPosition.lng.toFixed(6)}`;
+            
+            // Update speed
+            const speedKph = userPosition.speed ? (userPosition.speed * 3.6).toFixed(1) : '0.0';
+            document.getElementById('currentSpeed').textContent = speedKph;
+            
+            // Update accuracy
+            let accuracyText = 'High';
+            if (userPosition.accuracy > 50) accuracyText = 'Medium';
+            if (userPosition.accuracy > 100) accuracyText = 'Low';
+            document.getElementById('locationAccuracy').innerHTML = 
+                `<i class="fas fa-crosshairs ${accuracyText === 'High' ? 'text-green-500' : accuracyText === 'Medium' ? 'text-yellow-500' : 'text-red-500'}"></i> ${accuracyText}`;
+            
+            // Update last update time
+            document.getElementById('lastUpdate').textContent = 
+                userPosition.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function updateBatteryDisplay() {
+            let batteryIcon = 'fa-battery-full';
+            let batteryColor = 'text-green-500';
+            
+            if (userData.battery < 20) {
+                batteryIcon = 'fa-battery-quarter';
+                batteryColor = 'text-red-500';
+            } else if (userData.battery < 50) {
+                batteryIcon = 'fa-battery-half';
+                batteryColor = 'text-yellow-500';
+            } else if (userData.battery < 80) {
+                batteryIcon = 'fa-battery-three-quarters';
+                batteryColor = 'text-green-500';
+            }
+            
+            document.getElementById('batteryLevel').innerHTML = 
+                `<i class="fas ${batteryIcon} ${batteryColor}"></i> ${Math.round(userData.battery)}%`;
+        }
+
+        function updateTimer() {
+            if (!userData.startTime) return;
+            
+            const now = new Date();
+            const diff = Math.floor((now - userData.startTime) / 1000);
+            
+            const hours = Math.floor(diff / 3600);
+            const minutes = Math.floor((diff % 3600) / 60);
+            const seconds = diff % 60;
+            
+            const timeString = hours > 0 
+                ? `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+                : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            document.getElementById('timeElapsed').textContent = timeString;
+        }
+
+        function updateNearestStaff() {
+            if (!userPosition || Object.keys(staffData).length === 0) {
+                document.getElementById('nearestStaff').textContent = '--';
+                return;
+            }
+            
+            let nearestDistance = Infinity;
+            let nearestStaff = null;
+            
+            Object.values(staffData).forEach(staff => {
+                if (staff.location && staff.share_location !== false) {
+                    const distance = calculateDistance(
+                        userPosition.lat, userPosition.lng,
+                        staff.location[0], staff.location[1]
+                    );
+                    
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestStaff = staff;
+                    }
+                }
+            });
+            
+            if (nearestStaff && nearestDistance < 5000) { // Within 5km
+                document.getElementById('nearestStaff').textContent = `${nearestDistance.toFixed(1)}km`;
+                
+                // Show staff nearby section
+                document.getElementById('staffNearbySection').classList.remove('hidden');
+                updateStaffNearbyList();
+            } else {
+                document.getElementById('nearestStaff').textContent = '--';
+                document.getElementById('staffNearbySection').classList.add('hidden');
+            }
+        }
+
+        function updateStaffNearbyList() {
+            const container = document.getElementById('staffNearbyList');
+            container.innerHTML = '';
+            
+            Object.values(staffData)
+                .filter(staff => {
+                    if (!staff.location || staff.share_location === false) return false;
+                    const distance = calculateDistance(
+                        userPosition.lat, userPosition.lng,
+                        staff.location[0], staff.location[1]
+                    );
+                    return distance < 2000; // Within 2km
+                })
+                .sort((a, b) => {
+                    const distA = calculateDistance(userPosition.lat, userPosition.lng, a.location[0], a.location[1]);
+                    const distB = calculateDistance(userPosition.lat, userPosition.lng, b.location[0], b.location[1]);
+                    return distA - distB;
+                })
+                .slice(0, 3) // Show only 3 nearest
+                .forEach(staff => {
+                    const distance = calculateDistance(
+                        userPosition.lat, userPosition.lng,
+                        staff.location[0], staff.location[1]
+                    );
+                    
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-lg p-3 border border-gray-200 shadow-sm';
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center">
+                                <div class="w-10 h-10 rounded-full ${staff.transport === 'bike' ? 'bg-amber-100' : staff.first_aid ? 'bg-red-100' : 'bg-orange-100'} flex items-center justify-center mr-3">
+                                    <i class="fas fa-${staff.transport === 'bike' ? 'bicycle' : 'walking'} ${staff.transport === 'bike' ? 'text-amber-600' : staff.first_aid ? 'text-red-600' : 'text-orange-600'}"></i>
+                                </div>
+                                <div>
+                                    <div class="font-medium">${staff.name}</div>
+                                    <div class="text-sm text-gray-600">
+                                        ${distance.toFixed(1)}km away • 
+                                        ${staff.first_aid ? '🩹 First Aid' : 'No Kit'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm font-bold ${distance < 500 ? 'text-green-600' : 'text-blue-600'}">
+                                    ${distance < 1000 ? `${Math.round(distance)}m` : `${(distance/1000).toFixed(1)}km`}
+                                </div>
+                                <div class="text-xs text-gray-500">${staff.status || 'Available'}</div>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+        }
+
+        function handleSystemStatus(data) {
+            document.getElementById('userCount').innerHTML = `<i class="fas fa-users mr-1"></i> ${data.active_users}`;
+            document.getElementById('staffCount').innerHTML = `<i class="fas fa-user-shield mr-1"></i> ${data.active_staff}`;
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c; // Distance in meters
+        }
+
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg transition-all transform translate-x-0 opacity-100 ${type === 'error' ? 'bg-red-100 border border-red-300 text-red-700' : type === 'success' ? 'bg-green-100 border border-green-300 text-green-700' : type === 'emergency' ? 'bg-red-500 text-white border border-red-600' : 'bg-blue-100 border border-blue-300 text-blue-700'}`;
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas ${type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : type === 'emergency' ? 'fa-exclamation-triangle' : 'fa-info-circle'} mr-2"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                notification.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 5000);
+            
+            // Also log to console
+            console.log(`Notification (${type}):`, message);
+        }
+
+        // ========== PAGE VISIBILITY HANDLING ==========
+        document.addEventListener('visibilitychange', function() {
             if (!document.hidden && userPosition) {
-                updateUserLocation();
+                // Page became visible again - send immediate update
+                sendLocationUpdate();
             }
         });
 
-        // Update location every 10 seconds even when tab is background
-        setInterval(updateUserLocation, 10000);
+        // ========== WINDOW UNLOAD HANDLING ==========
+        window.addEventListener('beforeunload', function() {
+            // Clean up resources
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            
+            // Send disconnect notification
+            if (socket && socket.connected) {
+                socket.disconnect();
+            }
+        });
+
+        // ========== ERROR HANDLING ==========
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.error);
+            showNotification('An error occurred. Please refresh the page.', 'error');
+        });
     </script>
 </body>
 </html>
