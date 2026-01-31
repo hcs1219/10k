@@ -182,7 +182,7 @@ def handle_register_crew(data):
     with data_lock:
         crew[sid] = {
             'sid': sid,
-            'name': 'CREW',
+            'name': 'Crew',
             'location': data.get('location', [25.0338, 121.5645]),
             'transport': data.get('transport', 'walk'),
             'first_aid': data.get('first_aid', False),
@@ -303,7 +303,7 @@ def handle_get_initial_data():
         for cid, c in crew.items():
             if cid != sid:
                 crew_data[cid] = {
-                    'name': 'CREW',
+                    'name': 'Crew',
                     'location': c.get('location'),
                     'transport': c.get('transport', 'walk'),
                     'first_aid': c.get('first_aid', False)
