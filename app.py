@@ -18,51 +18,118 @@ socketio = SocketIO(app,
                    logger=False,
                    engineio_logger=False)
 
-# 數據存儲
+# Data storage
 users = {}
 crew = {}
 emergencies = {}
 
 data_lock = threading.Lock()
 
-# 路線數據
+# Route data - Full coordinates
 ROUTES = {
     "route_2k": {
         "id": "route_2k",
-        "name": "2km 路線",
+        "name": "2km Route",
         "path": [
             [25.0338, 121.5645],
             [25.0335, 121.5640],
             [25.0330, 121.5635],
-            [25.0325, 121.5630]
+            [25.0325, 121.5630],
+            [25.0320, 121.5625],
+            [25.0315, 121.5620],
+            [25.0310, 121.5615],
+            [25.0305, 121.5610],
+            [25.0300, 121.5605],
+            [25.0305, 121.5610],
+            [25.0310, 121.5615],
+            [25.0315, 121.5620],
+            [25.0320, 121.5625],
+            [25.0325, 121.5630],
+            [25.0330, 121.5635],
+            [25.0335, 121.5640],
+            [25.0338, 121.5645]
         ],
         "color": "#3B82F6"
     },
     "route_5k": {
         "id": "route_5k", 
-        "name": "5km 路線",
+        "name": "5km Route",
         "path": [
             [25.0338, 121.5645],
+            [25.0340, 121.5650],
             [25.0345, 121.5655],
+            [25.0350, 121.5660],
             [25.0355, 121.5665],
-            [25.0365, 121.5675]
+            [25.0360, 121.5670],
+            [25.0365, 121.5675],
+            [25.0370, 121.5680],
+            [25.0375, 121.5685],
+            [25.0380, 121.5690],
+            [25.0385, 121.5695],
+            [25.0390, 121.5700],
+            [25.0395, 121.5705],
+            [25.0400, 121.5710],
+            [25.0395, 121.5705],
+            [25.0390, 121.5700],
+            [25.0385, 121.5695],
+            [25.0380, 121.5690],
+            [25.0375, 121.5685],
+            [25.0370, 121.5680],
+            [25.0365, 121.5675],
+            [25.0360, 121.5670],
+            [25.0355, 121.5665],
+            [25.0350, 121.5660],
+            [25.0345, 121.5655],
+            [25.0340, 121.5650],
+            [25.0338, 121.5645]
         ],
         "color": "#10B981"
     },
     "route_10k": {
         "id": "route_10k",
-        "name": "10km 路線", 
+        "name": "10km Route", 
         "path": [
             [25.0338, 121.5645],
+            [25.0335, 121.5640],
             [25.0330, 121.5635],
+            [25.0325, 121.5630],
             [25.0320, 121.5625],
-            [25.0310, 121.5615]
+            [25.0315, 121.5620],
+            [25.0310, 121.5615],
+            [25.0305, 121.5610],
+            [25.0300, 121.5605],
+            [25.0295, 121.5600],
+            [25.0290, 121.5595],
+            [25.0285, 121.5590],
+            [25.0280, 121.5585],
+            [25.0275, 121.5580],
+            [25.0270, 121.5575],
+            [25.0265, 121.5570],
+            [25.0260, 121.5565],
+            [25.0255, 121.5560],
+            [25.0260, 121.5565],
+            [25.0265, 121.5570],
+            [25.0270, 121.5575],
+            [25.0275, 121.5580],
+            [25.0280, 121.5585],
+            [25.0285, 121.5590],
+            [25.0290, 121.5595],
+            [25.0295, 121.5600],
+            [25.0300, 121.5605],
+            [25.0305, 121.5610],
+            [25.0310, 121.5615],
+            [25.0315, 121.5620],
+            [25.0320, 121.5625],
+            [25.0325, 121.5630],
+            [25.0330, 121.5635],
+            [25.0335, 121.5640],
+            [25.0338, 121.5645]
         ],
         "color": "#8B5CF6"
     }
 }
 
-# 路由
+# Routes
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
@@ -75,17 +142,15 @@ def crew_page():
 def get_routes():
     return jsonify(ROUTES)
 
-# WebSocket 處理
+# WebSocket handlers
 @socketio.on('connect')
 def handle_connect():
     sid = request.sid
-    print(f'連接: {sid}')
     emit('connected', {'sid': sid})
 
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    print(f'斷線: {sid}')
     
     with data_lock:
         if sid in users:
@@ -102,7 +167,7 @@ def handle_register_user(data):
     with data_lock:
         users[sid] = {
             'sid': sid,
-            'name': f'跑者-{sid[-4:]}',
+            'name': 'Runner',
             'location': data.get('location', [25.0338, 121.5645]),
             'emergency': False,
             'last_update': datetime.now().isoformat()
@@ -117,7 +182,7 @@ def handle_register_crew(data):
     with data_lock:
         crew[sid] = {
             'sid': sid,
-            'name': f'工作人員-{sid[-4:]}',
+            'name': 'CREW',
             'location': data.get('location', [25.0338, 121.5645]),
             'transport': data.get('transport', 'walk'),
             'first_aid': data.get('first_aid', False),
@@ -172,11 +237,10 @@ def handle_emergency(data):
     
     with data_lock:
         user_location = [25.0338, 121.5645]
-        user_name = f'跑者-{sid[-4:]}'
+        user_name = 'Runner'
         
         if sid in users:
             user_location = users[sid]['location']
-            user_name = users[sid]['name']
             users[sid]['emergency'] = True
         
         emergencies[emergency_id] = {
@@ -230,16 +294,16 @@ def handle_get_initial_data():
         for uid, user in users.items():
             if uid != sid:
                 users_data[uid] = {
-                    'name': user.get('name'),
+                    'name': 'Runner',
                     'location': user.get('location'),
-                    'emergency': False  # 跑者看不到其他人的緊急狀態
+                    'emergency': False
                 }
         
         crew_data = {}
         for cid, c in crew.items():
             if cid != sid:
                 crew_data[cid] = {
-                    'name': c.get('name'),
+                    'name': 'CREW',
                     'location': c.get('location'),
                     'transport': c.get('transport', 'walk'),
                     'first_aid': c.get('first_aid', False)
@@ -253,7 +317,7 @@ def handle_get_initial_data():
         'your_id': sid
     })
 
-# 清理線程
+# Cleanup thread
 def cleanup_old_data():
     while True:
         time.sleep(60)
@@ -277,5 +341,4 @@ cleanup_thread = threading.Thread(target=cleanup_old_data, daemon=True)
 cleanup_thread.start()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+    socketio.run(app, host='0.0.0.0', port=8080, debug=False)
