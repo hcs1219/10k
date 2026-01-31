@@ -1351,7 +1351,7 @@ def index():
 
 @app.route('/crew')
 def crew():
-    return app.send_static_file('staff.html')
+    return app.send_static_file('crew.html')
 
 @app.route('/api/routes/<route_name>')
 def get_route(route_name):
